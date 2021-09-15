@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/user"
 
 	"github.com/ppenguin/filetypestats"
 	utils "github.com/ppenguin/gogenutils"
@@ -15,11 +14,11 @@ func exitErr(err error) {
 }
 
 func main() {
-	usr, _ := user.Current()
-	home := usr.HomeDir
+	// usr, _ := user.Current()
+	// home := usr.HomeDir
 
 	var (
-		scanRoot       = []string{home + "/Documents", home + "/Downloads", home + "/.local"}
+		scanRoot       = []string{"/usr/share"}
 		totCount int   = 0
 		totSize  int64 = 0
 	)
