@@ -75,3 +75,55 @@ func fileTypeStats(scanRoot string, statsData *FileTypeStats) (*FileTypeStats, e
 	}
 	return statsData, nil
 }
+
+func WalkFileSizeCount(scanDirs []string) (*ftypeStat, error) {
+	var err error
+	pFStats := &ftypeStat{}
+
+	sdirs := gogenutils.FilterCommonRootDirs(scanDirs)
+	if len(sdirs) < 1 {
+		return nil, fmt.Errorf("WalkFileTypeStats:: no scan path(s) specified")
+	}
+
+	for _, d := range sdirs {
+		if pFStats, err = fileSizeCount(d, pFStats); err != nil {
+			return nil, err
+		}
+	}
+	return pFStats, nil
+}
+
+// fileSizeCount is the recursive callback that just counts number and size of files
+func fileSizeCount(scanRoot string, fstats *ftypeStat) (*ftypeStat, error) {
+
+	if err := godirwalk.Walk(scanRoot, &godirwalk.Options{
+		Callback: func(osPathname string, de *godirwalk.Dirent) error {
+			var (
+				err error = nil
+				fi  fs.FileInfo
+			)
+
+			if de.IsRegular() {
+				// fullpath := osPathname + "/" + de.Name()
+				fi, err = os.Stat(osPathname)
+				if err == nil {
+					fstats.FileCount += 1
+					fstats.NumBytes += fi.Size()
+				}
+			}
+
+			if err != nil {
+				fmt.Fprint(os.Stderr, err.Error())
+			}
+			return err
+		},
+		Unsorted: true, // (optional) set true for faster yet non-deterministic enumeration (see godoc)
+		ErrorCallback: func(s string, e error) godirwalk.ErrorAction {
+			fmt.Fprintf(os.Stderr, "warning: %s reading %s\n", e.Error(), s)
+			return godirwalk.SkipNode
+		},
+	}); err != nil {
+		return nil, err
+	}
+	return fstats, nil
+}

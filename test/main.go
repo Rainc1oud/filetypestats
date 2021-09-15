@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ppenguin/filetypestats"
 	utils "github.com/ppenguin/gogenutils"
@@ -14,16 +15,23 @@ func exitErr(err error) {
 }
 
 func main() {
-	// usr, _ := user.Current()
-	// home := usr.HomeDir
+	dirs := []string{"/usr/share"}
 
+	ts := time.Now()
+	ShowFileTypeStats(dirs)
+	fmt.Printf("\nFileTypeStats took %v\n", time.Since(ts))
+
+	ts = time.Now()
+	ShowFileSizeCount(dirs)
+	fmt.Printf("\nFileSizeCount took %v\n", time.Since(ts))
+}
+
+func ShowFileTypeStats(dirs []string) {
 	var (
-		scanRoot       = []string{"/usr/share"}
 		totCount int   = 0
 		totSize  int64 = 0
 	)
-
-	if ftStats, err := filetypestats.WalkFileTypeStats(scanRoot); err != nil {
+	if ftStats, err := filetypestats.WalkFileTypeStats(dirs); err != nil {
 		exitErr(err)
 	} else {
 		fmt.Println("Test with WalkFileTypeStats:")
@@ -33,5 +41,13 @@ func main() {
 			totSize += v.NumBytes
 		}
 		fmt.Printf("\nTotal %d files taking %s of space\n", totCount, utils.ByteCountSI(totSize))
+	}
+}
+
+func ShowFileSizeCount(dirs []string) {
+	if fStats, err := filetypestats.WalkFileSizeCount(dirs); err != nil {
+		exitErr(err)
+	} else {
+		fmt.Printf("Test with WalkFileSizeCount:\n%d files taking %s of space\n", fStats.FileCount, utils.ByteCountSI(fStats.NumBytes))
 	}
 }
