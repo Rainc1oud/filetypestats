@@ -7,19 +7,14 @@ import (
 
 	"github.com/karrick/godirwalk"
 	"github.com/ppenguin/filetype"
+
+	"github.com/ppenguin/filetypestats/types"
 	"github.com/ppenguin/gogenutils"
 )
 
-type ftypeStat struct {
-	NumBytes  int64
-	FileCount int
-}
-
-type FileTypeStats map[string]*ftypeStat
-
-func WalkFileTypeStats(scanDirs []string) (FileTypeStats, error) {
+func WalkFileTypeStats(scanDirs []string) (types.FileTypeStats, error) {
 	var err error
-	ftStats := make(FileTypeStats)
+	ftStats := make(types.FileTypeStats)
 	pFtStats := &ftStats
 
 	sdirs := gogenutils.FilterCommonRootDirs(scanDirs)
@@ -35,7 +30,7 @@ func WalkFileTypeStats(scanDirs []string) (FileTypeStats, error) {
 	return *pFtStats, nil
 }
 
-func fileTypeStats(scanRoot string, statsData *FileTypeStats) (*FileTypeStats, error) {
+func fileTypeStats(scanRoot string, statsData *types.FileTypeStats) (*types.FileTypeStats, error) {
 
 	if err := godirwalk.Walk(scanRoot, &godirwalk.Options{
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
@@ -51,10 +46,10 @@ func fileTypeStats(scanRoot string, statsData *FileTypeStats) (*FileTypeStats, e
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
 						if (*statsData)[ftype] == nil {
-							(*statsData)[ftype] = new(ftypeStat)
+							(*statsData)[ftype] = new(types.FTypeStat)
 						}
 						(*statsData)[ftype].FileCount += 1
-						(*statsData)[ftype].NumBytes += fi.Size()
+						(*statsData)[ftype].NumBytes += uint64(fi.Size())
 						return err
 					}
 				}
@@ -76,9 +71,9 @@ func fileTypeStats(scanRoot string, statsData *FileTypeStats) (*FileTypeStats, e
 	return statsData, nil
 }
 
-func WalkFileSizeCount(scanDirs []string) (*ftypeStat, error) {
+func WalkFileSizeCount(scanDirs []string) (*types.FTypeStat, error) {
 	var err error
-	pFStats := &ftypeStat{}
+	pFStats := &types.FTypeStat{}
 
 	sdirs := gogenutils.FilterCommonRootDirs(scanDirs)
 	if len(sdirs) < 1 {
@@ -94,7 +89,7 @@ func WalkFileSizeCount(scanDirs []string) (*ftypeStat, error) {
 }
 
 // fileSizeCount is the recursive callback that just counts number and size of files
-func fileSizeCount(scanRoot string, fstats *ftypeStat) (*ftypeStat, error) {
+func fileSizeCount(scanRoot string, fstats *types.FTypeStat) (*types.FTypeStat, error) {
 
 	if err := godirwalk.Walk(scanRoot, &godirwalk.Options{
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
@@ -108,7 +103,7 @@ func fileSizeCount(scanRoot string, fstats *ftypeStat) (*ftypeStat, error) {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					fstats.FileCount += 1
-					fstats.NumBytes += fi.Size()
+					fstats.NumBytes += uint64(fi.Size())
 				}
 			}
 

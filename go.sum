@@ -4,6 +4,8 @@ github.com/h2non/filetype v1.1.1 h1:xvOwnXKAckvtLWsN398qS9QhlxlnVXBjXBydK2/UFB4=
 github.com/h2non/filetype v1.1.1/go.mod h1:319b3zT68BvV+WRj7cwy856M2ehB3HqNOt6sy1HndBY=
 github.com/karrick/godirwalk v1.16.1 h1:DynhcF+bztK8gooS0+NDJFrdNZjJ3gzVzC545UNA9iw=
 github.com/karrick/godirwalk v1.16.1/go.mod h1:j4mkqPuvaLI8mp1DroR3P6ad7cyYd4c1qeJ3RV7ULlk=
+github.com/mattn/go-sqlite3 v1.14.8 h1:gDp86IdQsN/xWjIEmr9MF6o9mpksUgh0fu+9ByFxzIU=
+github.com/mattn/go-sqlite3 v1.14.8/go.mod h1:NyWgC/yNuGj7Q9rpYnZvas74GogHl5/Z4A/KQRfk6bU=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/ppenguin/filetype v1.1.2 h1:0fN0Q2F9P4PcEtLghtp4cLJpuSrJPiEjIjZ2B/lD19E=
@@ -12,6 +14,8 @@ github.com/ppenguin/gogenutils v0.0.0-20210421215841-a32e9f363d18 h1:yvIZPiyOYne
 github.com/ppenguin/gogenutils v0.0.0-20210421215841-a32e9f363d18/go.mod h1:M0g7BG7SwszFoEg9x2WBsoWJahVdlSyk9SLqTlR0LDM=
 github.com/ppenguin/gogenutils v0.1.0 h1:kv7JkgFD68mbDZOC5caiqFVX3hqMC5ZrdWLDP9+kAFk=
 github.com/ppenguin/gogenutils v0.1.0/go.mod h1:M0g7BG7SwszFoEg9x2WBsoWJahVdlSyk9SLqTlR0LDM=
+github.com/ppenguin/gogenutils v0.2.0 h1:76r0NLYDkI6Dgw6YFWz2NuxzWfLwV3aPDG/VfeOPE64=
+github.com/ppenguin/gogenutils v0.2.0/go.mod h1:M0g7BG7SwszFoEg9x2WBsoWJahVdlSyk9SLqTlR0LDM=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=

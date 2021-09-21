@@ -28,8 +28,8 @@ func main() {
 
 func ShowFileTypeStats(dirs []string) {
 	var (
-		totCount int   = 0
-		totSize  int64 = 0
+		totCount uint   = 0
+		totSize  uint64 = 0
 	)
 	if ftStats, err := filetypestats.WalkFileTypeStats(dirs); err != nil {
 		exitErr(err)
