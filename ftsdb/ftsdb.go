@@ -120,6 +120,69 @@ func UDirStats(dir string, stats *types.FileTypeStats) error {
 	return nil
 }
 
+// ResetDirStats sets all counters for this dir to zero
+func (f *FileTypeStatsDB) ResetDirStats(dir string) error {
+	rs, err := f.DB.Query(fmt.Sprintf("SELECT * FROM dirs WHERE dir='%s'", dir))
+	if err != nil {
+		return nil
+	}
+	if rs.Next() {
+		var dirid int
+		var dirpath string
+		rs.Scan(&dirid, &dirpath)
+		// set all categories for this dir to 0
+		if err := f.qryCUD(fmt.Sprintf("UPDATE dircatstats SET count=0, size=0 WHERE dirid=%d", dirid)); err != nil {
+			return nil
+		}
+		if err := f.qryCUD(fmt.Sprintf("UPDATE dirs SET count=0, size=0 WHERE id=%d", dirid)); err != nil {
+			return nil
+		}
+
+	}
+	return nil
+}
+
+// UpdateDirStatsAdd adds the count and size of the parameter fstats to the values for filecat for dir dir
+func (f *FileTypeStatsDB) UpdateDirStatsAdd(dir, filecat string, fstats *types.FTypeStat) error {
+	catid, err := f.selsertIdText("cats", "filecat", filecat)
+	if err != nil {
+		return err
+	}
+	dirid, err := f.selsertIdText("dirs", "dir", dir) // should combine with last query for performance
+	if err != nil {
+		return err
+	}
+	// upsert file type stats for dir
+	if err := f.qryCUD(fmt.Sprintf(
+		"INSERT INTO dircatstats(dirid, catid, count, size) VALUES(%d, %d, %d, %d)"+
+			" ON CONFLICT(dirid, catid) DO"+
+			" UPDATE SET count=count+%d, size=size+%d", dirid, catid, fstats.FileCount, fstats.NumBytes, fstats.FileCount, fstats.NumBytes)); err != nil {
+		return err
+	}
+	// update dir totals for dir
+	return f.qryCUD(fmt.Sprintf("UPDATE dirs SET count=count+%d, size-size+%d WHERE id=%d", fstats.FileCount, fstats.NumBytes, dirid))
+}
+
+// returns table.id where field==value, inserts value if not exist (id must be AUTOINCREMENT)
+func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error) {
+	var id int
+	rs, err := f.DB.Query(fmt.Sprintf("SELECT id FROM %s WHERE %s='%s'", table, field, value))
+	if err != nil {
+		return -1, err
+	}
+	if rs.Next() {
+		if err := rs.Scan(&id); err != nil {
+			return -1, err
+		}
+		return id, nil
+	}
+	r := f.DB.QueryRow(fmt.Sprintf("INSERT INTO %s(%s) VALUES('%s') RETURNING id", table, field, value))
+	if err := r.Scan(&id); err != nil {
+		return -1, err
+	}
+	return id, nil
+}
+
 // RDirStats reads stats for dir
 func RDirStats(dir string) *types.FileTypeStats {
 	return nil
