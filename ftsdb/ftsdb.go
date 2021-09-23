@@ -127,7 +127,7 @@ func (f *FileTypeStatsDB) FTStatsDirsSum(dirs []string) (types.FileTypeStats, er
 			pred[i] = fmt.Sprintf("dirs.dir='%s'", d)
 		}
 	}
-	wpreds := strings.Join(pred, " OR")
+	wpreds := strings.Join(pred, " OR ")
 	rs, err := f.DB.Query(fmt.Sprintf(
 		"SELECT cats.filecat, SUM(dircatstats.count) AS fcatcount, SUM(dircatstats.size) AS fcatsize"+
 			" FROM dirs, cats, dircatstats"+
