@@ -16,7 +16,9 @@ type FileTypeStatsDB struct {
 	DB       *sql.DB
 }
 
-var FileCategories = func() []string { return []string{"Audio", "Video", "Image", "Application", "Other"} }
+// file categories are added when encountered, no need to hard-code and/or init in the DB
+// TODO: somehow the categories seem not to cover all posible types, this might be an issue with h2non/filetype?
+// var FileCategories = func() []string { return []string{"Audio", "Video", "Image", "Application", "Other"} }
 
 // New returns a DB instance to the sqlite db in existing file or creates it if it doesn't exist and create==true
 func New(file string, create bool) (*FileTypeStatsDB, error) {
