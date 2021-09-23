@@ -2,6 +2,9 @@ GOOS ?= linux
 GOARCH ?= amd64
 BPFX := $(GOOS)-$(GOARCH)
 
+# needed for sqlite dep, needs container builds for other archs
+GOENV := CGO_ENABLED=1
+
 .PHONY: clean
 clean:
 	rm -f *.sqlite
@@ -10,4 +13,4 @@ clean:
 .PHONY: testcli
 testcli: build/$(BPFX)/testcli
 build/$(BPFX)/testcli: internal/cmd/testcli/testcli.go
-	go build -v -o $@ $^
+	$(GOENV) go build -v -o $@ $^
