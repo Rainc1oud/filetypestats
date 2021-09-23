@@ -56,13 +56,13 @@ func (f *FileTypeStatsDB) init() error {
 	}
 	// initialise cats table with same categories as used in the scanning functions
 	// not found out yet how to query filetypes for the main categories registered, so we use a constant for now
-	vp := make([]string, len(FileCategories()))
-	for i, cat := range FileCategories() {
-		vp[i] = fmt.Sprintf("('%s')", cat)
-	}
-	if err := f.qryCUD(fmt.Sprintf("INSERT INTO cats(filecat) VALUES %s ON CONFLICT(filecat) DO NOTHING", strings.Join(vp, ","))); err != nil {
-		return err
-	}
+	// vp := make([]string, len(FileCategories()))
+	// for i, cat := range FileCategories() {
+	// 	vp[i] = fmt.Sprintf("('%s')", cat)
+	// }
+	// if err := f.qryCUD(fmt.Sprintf("INSERT INTO cats(filecat) VALUES %s ON CONFLICT(filecat) DO NOTHING", strings.Join(vp, ","))); err != nil {
+	// 	return err
+	// }
 	return nil
 }
 
@@ -115,9 +115,42 @@ func (f *FileTypeStatsDB) createTables() error {
 	return nil
 }
 
-// DbUDirStats updates stats for dir or creates if not exists
-func UDirStats(dir string, stats *types.FileTypeStats) error {
-	return nil
+// FTStatsDirsSum returns the FileTypeStats summed over the given dirs
+// call with dir="/my/dir/*" to get the recursive totals under that dir
+func (f *FileTypeStatsDB) FTStatsDirsSum(dirs []string) (types.FileTypeStats, error) {
+	pred := make([]string, len(dirs))
+	for i, d := range dirs {
+		if strings.Contains(d, "*") {
+			pfx := strings.TrimSuffix(strings.Split(d, "*")[0], "/") // somehow we need the extra trim for the numbers to add up, as well as the exact match
+			pred[i] = fmt.Sprintf("dirs.dir LIKE '%s%%' OR dirs.dir='%s'", pfx, pfx)
+		} else {
+			pred[i] = fmt.Sprintf("dirs.dir='%s'", d)
+		}
+	}
+	wpreds := strings.Join(pred, " OR")
+	rs, err := f.DB.Query(fmt.Sprintf(
+		"SELECT cats.filecat, SUM(dircatstats.count) AS fcatcount, SUM(dircatstats.size) AS fcatsize"+
+			" FROM dirs, cats, dircatstats"+
+			" WHERE dircatstats.catid=cats.id AND dircatstats.dirid=dirs.id AND (%s)"+
+			" GROUP BY filecat", wpreds))
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+
+	var (
+		filecat   string
+		fcatcount uint
+		fcatsize  uint64
+		fstats    = make(types.FileTypeStats)
+	)
+	for rs.Next() {
+		if err := rs.Scan(&filecat, &fcatcount, &fcatsize); err != nil {
+			return nil, err
+		}
+		fstats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
+	}
+	return fstats, nil
 }
 
 // ResetDirStats sets all counters for this dir to zero
@@ -126,6 +159,7 @@ func (f *FileTypeStatsDB) ResetDirStats(dir string) error {
 	if err != nil {
 		return nil
 	}
+	defer rs.Close()
 	if rs.Next() {
 		var dirid int
 		var dirpath string
@@ -170,6 +204,7 @@ func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error)
 	if err != nil {
 		return -1, err
 	}
+	defer rs.Close() // important, otherwise later we get "locked" errors
 	if rs.Next() {
 		if err := rs.Scan(&id); err != nil {
 			return -1, err
