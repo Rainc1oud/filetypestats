@@ -120,21 +120,12 @@ func (f *FileTypeStatsDB) createTables() error {
 // FTStatsDirsSum returns the FileTypeStats summed over the given dirs
 // call with dir="/my/dir/*" to get the recursive totals under that dir
 func (f *FileTypeStatsDB) FTStatsDirsSum(dirs []string) (types.FileTypeStats, error) {
-	pred := make([]string, len(dirs))
-	for i, d := range dirs {
-		if strings.Contains(d, "*") {
-			pfx := strings.TrimSuffix(strings.Split(d, "*")[0], "/") // somehow we need the extra trim for the numbers to add up, as well as the exact match
-			pred[i] = fmt.Sprintf("dirs.dir LIKE '%s%%' OR dirs.dir='%s'", pfx, pfx)
-		} else {
-			pred[i] = fmt.Sprintf("dirs.dir='%s'", d)
-		}
-	}
-	wpreds := strings.Join(pred, " OR ")
+	wp := f.dirsWherePredicate(dirs)
 	rs, err := f.DB.Query(fmt.Sprintf(
 		"SELECT cats.filecat, SUM(dircatstats.count) AS fcatcount, SUM(dircatstats.size) AS fcatsize"+
 			" FROM dirs, cats, dircatstats"+
 			" WHERE dircatstats.catid=cats.id AND dircatstats.dirid=dirs.id AND (%s)"+
-			" GROUP BY filecat", wpreds))
+			" GROUP BY filecat", wp))
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +146,51 @@ func (f *FileTypeStatsDB) FTStatsDirsSum(dirs []string) (types.FileTypeStats, er
 	return fstats, nil
 }
 
+// FTStatsDirs returns the FileTypeStats per dir
+// call with dir="/my/dir/*" to get the recursive totals under that dir
+func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeDirStats, error) {
+	// TODO: maybe nicer solution using PIVOT or similar?
+	wp := f.dirsWherePredicate(dirs)
+	rs, err := f.DB.Query(fmt.Sprintf(
+		"SELECT dirs.dir, cats.filecat, SUM(dircatstats.count) AS fcatcount, SUM(dircatstats.size) AS fcatsize"+
+			" FROM dirs, cats, dircatstats"+
+			" WHERE dircatstats.catid=cats.id AND dircatstats.dirid=dirs.id AND (%s)"+
+			" GROUP BY dirs.dir, cats.filecat"+
+			" ORDER BY dirs.dir", wp))
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+
+	var (
+		dir       string
+		filecat   string
+		fcatcount uint
+		fcatsize  uint64
+		fdstats   = make(types.FileTypeDirStats)
+	)
+	for rs.Next() {
+		if err := rs.Scan(&dir, &filecat, &fcatcount, &fcatsize); err != nil {
+			return nil, err
+		}
+		if fdstats[dir] == nil {
+			ftstats := make(types.FileTypeStats)
+			ftstats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
+			fdstats[dir] = &types.FTypeDirStat{FTypeStats: ftstats, TotCount: 0, TotSize: 0}
+		} else {
+			if fdstats[dir].FTypeStats[filecat] == nil {
+				fdstats[dir].FTypeStats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
+			} else {
+				fdstats[dir].FTypeStats[filecat].FileCount += fcatcount
+				fdstats[dir].FTypeStats[filecat].NumBytes += fcatsize
+			}
+			fdstats[dir].TotCount += fcatcount
+			fdstats[dir].TotSize += fcatsize
+		}
+	}
+	return fdstats, nil
+}
+
 // ResetDirStats sets all counters for this dir to zero
 func (f *FileTypeStatsDB) ResetDirStats(dir string) error {
 	rs, err := f.DB.Query(fmt.Sprintf("SELECT * FROM dirs WHERE dir='%s'", dir))
@@ -173,7 +209,6 @@ func (f *FileTypeStatsDB) ResetDirStats(dir string) error {
 		if err := f.qryCUD(fmt.Sprintf("UPDATE dirs SET count=0, size=0 WHERE id=%d", dirid)); err != nil {
 			return nil
 		}
-
 	}
 	return nil
 }
@@ -223,4 +258,18 @@ func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error)
 // RDirStats reads stats for dir
 func RDirStats(dir string) *types.FileTypeStats {
 	return nil
+}
+
+// dirsWherePredicate returns the WHERE clause part selecting the dirs according to input dir list
+func (f *FileTypeStatsDB) dirsWherePredicate(dirs []string) string {
+	pred := make([]string, len(dirs))
+	for i, d := range dirs {
+		if strings.Contains(d, "*") {
+			pfx := strings.TrimSuffix(strings.Split(d, "*")[0], "/") // somehow we need the extra trim for the numbers to add up, as well as the exact match
+			pred[i] = fmt.Sprintf("dirs.dir LIKE '%s%%' OR dirs.dir='%s'", pfx, pfx)
+		} else {
+			pred[i] = fmt.Sprintf("dirs.dir='%s'", d)
+		}
+	}
+	return strings.Join(pred, " OR ")
 }

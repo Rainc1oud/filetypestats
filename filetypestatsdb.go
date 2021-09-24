@@ -49,6 +49,7 @@ func fileTypeStatsDB(scanRoot string, statsData *types.FileTypeStats, fdb *ftsdb
 			)
 
 			if de.IsDir() { // TODO: is it guaranteed that this happens before the files in this dir are scanned?
+				// TODO: the dir totals are incorrect, they only count "other" files *if* a second type is also counted...
 				fdb.ResetDirStats(osPathname) // set counters to 0 in DB for this dir
 			} else if de.IsRegular() {
 				// fullpath := osPathname + "/" + de.Name()

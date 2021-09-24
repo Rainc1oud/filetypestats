@@ -34,6 +34,8 @@ func main() {
 		scan(scandirs, *dbfile)
 	case "show":
 		show(scandirs, *dbfile)
+	case "dump":
+		dump(scandirs, *dbfile)
 	default:
 		usage()
 	}
@@ -41,10 +43,11 @@ func main() {
 
 func usage() {
 	fmt.Printf(
-		"Usage: %s [ --dirs=dir1,dir2 ] [ --db=scandb.sqlite ] [ scan | show ]\n"+
+		"Usage: %s [ --dirs=dir1,dir2 ] [ --db=scandb.sqlite ] [ scan | show | dump ]\n"+
 			"\tscan: scans all dirs given recursively and stores statistics per dir in scandb\n"+
 			"\tshow: gets the totals from scandb for the given dirs.\n"+
-			"\t\tTo show totals under a dir, use the special form --dir='/dir/to/%%' (remember quoting if necessary)\n", os.Args[0])
+			"\t\tTo show totals under a dir, use the special form --dir='/dir/to/%%' (remember quoting if necessary)\n"+
+			"\tdump: dumps all selected dirs with their stats", os.Args[0])
 	os.Exit(0)
 }
 
@@ -81,6 +84,22 @@ func show(dirs []string, file string) {
 	printstats(fstats)
 }
 
+func dump(dirs []string, file string) {
+	db, err := ftsdb.New(file, false)
+	if err != nil {
+		exiterr(err)
+	}
+	defer db.Close()
+	ts := time.Now()
+	fdstats, err := db.FTStatsDirs(dirs)
+	if err != nil {
+		exiterr(err)
+	}
+	fmt.Printf("Query took %s\n\n", time.Since(ts))
+	fmt.Println("Query totals:")
+	printdirstats(fdstats)
+}
+
 func printstats(fstats types.FileTypeStats) {
 	totCount := uint(0)
 	totSize := uint64(0)
@@ -90,4 +109,14 @@ func printstats(fstats types.FileTypeStats) {
 		totSize += v.NumBytes
 	}
 	fmt.Printf("\nTotal %d files taking %s of space\n", totCount, utils.ByteCountSI(totSize))
+}
+
+func printdirstats(fdstats types.FileTypeDirStats) {
+	for dir, data := range fdstats {
+		catstats := ""
+		for k, v := range data.FTypeStats {
+			catstats += fmt.Sprintf("%5d %12s files (%8s) ", v.FileCount, k, utils.ByteCountSI(v.NumBytes))
+		}
+		fmt.Printf("%80s: \ttotal %6d files (%8s) \t%s\n", dir, data.TotCount, utils.ByteCountSI(data.TotSize), catstats)
+	}
 }
