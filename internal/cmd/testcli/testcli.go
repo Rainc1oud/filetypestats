@@ -32,8 +32,8 @@ func main() {
 			os.Remove(*dbfile)
 		}
 		scan(scandirs, *dbfile)
-	case "show":
-		show(scandirs, *dbfile)
+	// case "show":
+	// 	show(scandirs, *dbfile)
 	case "dump":
 		dump(scandirs, *dbfile)
 	default:
@@ -46,7 +46,7 @@ func usage() {
 		"Usage: %s [ --dirs=dir1,dir2 ] [ --db=scandb.sqlite ] [ scan | show | dump ]\n"+
 			"\tscan: scans all dirs given recursively and stores statistics per dir in scandb\n"+
 			"\tshow: gets the totals from scandb for the given dirs.\n"+
-			"\t\tTo show totals under a dir, use the special form --dir='/dir/to/%%' (remember quoting if necessary)\n"+
+			"\t\tTo show totals under a dir, use the special form --dir='/dir/to/*' (remember quoting if necessary)\n"+
 			"\tdump: dumps all selected dirs with their stats", os.Args[0])
 	os.Exit(0)
 }
@@ -59,30 +59,30 @@ func exiterr(err error) {
 func scan(dirs []string, file string) {
 	fmt.Printf("Scanning %v to database %s...\n", dirs, file)
 	ts := time.Now()
-	if fstats, err := filetypestats.WalkFileTypeStatsDB(dirs, file); err != nil {
+	if _, err := filetypestats.WalkFileTypeStatsDB(dirs, file); err != nil {
 		exiterr(err)
 	} else {
 		fmt.Printf("Scanning took %s\n\n", time.Since(ts))
 		fmt.Println("Scan totals:")
-		printstats(fstats)
+		// printstats(fstats)
 	}
 }
 
-func show(dirs []string, file string) {
-	db, err := ftsdb.New(file, false)
-	if err != nil {
-		exiterr(err)
-	}
-	defer db.Close()
-	ts := time.Now()
-	fstats, err := db.FTStatsDirsSum(dirs)
-	if err != nil {
-		exiterr(err)
-	}
-	fmt.Printf("Query took %s\n\n", time.Since(ts))
-	fmt.Println("Query totals:")
-	printstats(fstats)
-}
+// func show(dirs []string, file string) {
+// 	db, err := ftsdb.New(file, false)
+// 	if err != nil {
+// 		exiterr(err)
+// 	}
+// 	defer db.Close()
+// 	ts := time.Now()
+// 	fstats, err := db.FTStatsDirsSum(dirs)
+// 	if err != nil {
+// 		exiterr(err)
+// 	}
+// 	fmt.Printf("Query took %s\n\n", time.Since(ts))
+// 	fmt.Println("Query totals:")
+// 	printstats(fstats)
+// }
 
 func dump(dirs []string, file string) {
 	db, err := ftsdb.New(file, false)
@@ -115,8 +115,8 @@ func printdirstats(fdstats types.FileTypeDirStats) {
 	for dir, data := range fdstats {
 		catstats := ""
 		for k, v := range data.FTypeStats {
-			catstats += fmt.Sprintf("%5d %12s files (%8s) ", v.FileCount, k, utils.ByteCountSI(v.NumBytes))
+			catstats += fmt.Sprintf("| %5d x %12s (%8s) ", v.FileCount, k, utils.ByteCountSI(v.NumBytes))
 		}
-		fmt.Printf("%80s: \ttotal %6d files (%8s) \t%s\n", dir, data.TotCount, utils.ByteCountSI(data.TotSize), catstats)
+		fmt.Printf("%80s: \ttotal %6d (%8s) \t%s\n", dir, data.TotCount, utils.ByteCountSI(data.TotSize), catstats)
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 
 	"github.com/karrick/godirwalk"
 	"github.com/ppenguin/filetype"
@@ -30,17 +29,19 @@ func WalkFileTypeStatsDB(scanDirs []string, dbfile string) (types.FileTypeStats,
 	}
 
 	for _, d := range sdirs {
-		if pFtStats, err = fileTypeStatsDB(d, &ftStats, fdb); err != nil {
+		if err = fileTypeStatsDB(d, fdb); err != nil {
 			return nil, err
 		}
 	}
+	// TODO: do query and return stats in result
 	fdb.Close()
 	return *pFtStats, nil
 }
 
-func fileTypeStatsDB(scanRoot string, statsData *types.FileTypeStats, fdb *ftsdb.FileTypeStatsDB) (*types.FileTypeStats, error) {
+func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 
 	if err := godirwalk.Walk(scanRoot, &godirwalk.Options{
+		AllowNonDirectory: true,
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
 			var (
 				err   error = nil
@@ -48,22 +49,15 @@ func fileTypeStatsDB(scanRoot string, statsData *types.FileTypeStats, fdb *ftsdb
 				ftype string
 			)
 
-			if de.IsDir() { // TODO: is it guaranteed that this happens before the files in this dir are scanned?
-				// TODO: the dir totals are incorrect, they only count "other" files *if* a second type is also counted...
-				fdb.ResetDirStats(osPathname) // set counters to 0 in DB for this dir
+			if de.IsDir() {
+				ftype = "dir"
+				fdb.UpdateFileStats(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
-				// fullpath := osPathname + "/" + de.Name()
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						fdb.UpdateDirStatsAdd(filepath.Dir(osPathname), ftype, &types.FTypeStat{FileCount: 1, NumBytes: uint64(fi.Size())})
-						// statsData only for testing, can be removed later because all persistence should go through the DB
-						if (*statsData)[ftype] == nil {
-							(*statsData)[ftype] = new(types.FTypeStat)
-						}
-						(*statsData)[ftype].FileCount += 1
-						(*statsData)[ftype].NumBytes += uint64(fi.Size())
-						return err
+						fdb.UpdateFileStats(osPathname, ftype, uint64(fi.Size()))
+						return nil
 					}
 				}
 			}
@@ -71,7 +65,7 @@ func fileTypeStatsDB(scanRoot string, statsData *types.FileTypeStats, fdb *ftsdb
 			if err != nil {
 				fmt.Fprint(os.Stderr, err.Error())
 			}
-			return err
+			return nil
 		},
 		Unsorted: true, // (optional) set true for faster yet non-deterministic enumeration (see godoc)
 		ErrorCallback: func(s string, e error) godirwalk.ErrorAction {
@@ -79,9 +73,9 @@ func fileTypeStatsDB(scanRoot string, statsData *types.FileTypeStats, fdb *ftsdb
 			return godirwalk.SkipNode
 		},
 	}); err != nil {
-		return nil, err
+		return err
 	}
-	return statsData, nil
+	return nil
 }
 
 // func WalkFileSizeCountDB(scanDirs []string) (*types.FTypeStat, error) {

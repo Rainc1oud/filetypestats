@@ -56,57 +56,22 @@ func (f *FileTypeStatsDB) init() error {
 	if err := f.createTables(); err != nil {
 		return err
 	}
-	// initialise cats table with same categories as used in the scanning functions
-	// not found out yet how to query filetypes for the main categories registered, so we use a constant for now
-	// vp := make([]string, len(FileCategories()))
-	// for i, cat := range FileCategories() {
-	// 	vp[i] = fmt.Sprintf("('%s')", cat)
-	// }
-	// if err := f.qryCUD(fmt.Sprintf("INSERT INTO cats(filecat) VALUES %s ON CONFLICT(filecat) DO NOTHING", strings.Join(vp, ","))); err != nil {
-	// 	return err
-	// }
-	return nil
-}
-
-// qryCUD is a simple Create/Update/Delete query with only error return
-func (f *FileTypeStatsDB) qryCUD(query string) error {
-	var qry *sql.Stmt
-	var err error
-	if qry, err = f.DB.Prepare(query); err != nil {
-		return err
-	}
-	defer qry.Close()
-
-	if _, err = qry.Exec(); err != nil {
-		return err
-	}
 	return nil
 }
 
 func (f *FileTypeStatsDB) createTables() error {
 
-	if err := f.qryCUD(
-		`CREATE TABLE IF NOT EXISTS dirs (
-			id  INTEGER PRIMARY KEY,
-			dir TEXT UNIQUE,
-			count UNSIGNED INT,
-			size UNSIGNED BIGINT
-		);`); err != nil {
-		return err
-	}
-
-	if err := f.qryCUD(
-		`CREATE TABLE IF NOT EXISTS dircatstats (
-			dirid INTEGER NOT NULL,
-			catid INTEGER NOT NULL,
-			count UNSIGNED INT,
+	if _, err := f.DB.Exec(
+		`CREATE TABLE IF NOT EXISTS fileinfo (
+			path TEXT NOT NULL,
 			size UNSIGNED BIGINT,
-			PRIMARY KEY (dirid, catid)
+			catid INTEGER NOT NULL,
+			PRIMARY KEY (path)
 		);`); err != nil {
 		return err
 	}
 
-	if err := f.qryCUD(
+	if _, err := f.DB.Exec(
 		`CREATE TABLE IF NOT EXISTS cats (
 			id INTEGER PRIMARY KEY,
 			filecat TEXT UNIQUE
@@ -117,46 +82,16 @@ func (f *FileTypeStatsDB) createTables() error {
 	return nil
 }
 
-// FTStatsDirsSum returns the FileTypeStats summed over the given dirs
-// call with dir="/my/dir/*" to get the recursive totals under that dir
-func (f *FileTypeStatsDB) FTStatsDirsSum(dirs []string) (types.FileTypeStats, error) {
-	wp := f.dirsWherePredicate(dirs)
-	rs, err := f.DB.Query(fmt.Sprintf(
-		"SELECT cats.filecat, SUM(dircatstats.count) AS fcatcount, SUM(dircatstats.size) AS fcatsize"+
-			" FROM dirs, cats, dircatstats"+
-			" WHERE dircatstats.catid=cats.id AND dircatstats.dirid=dirs.id AND (%s)"+
-			" GROUP BY filecat", wp))
-	if err != nil {
-		return nil, err
-	}
-	defer rs.Close()
-
-	var (
-		filecat   string
-		fcatcount uint
-		fcatsize  uint64
-		fstats    = make(types.FileTypeStats)
-	)
-	for rs.Next() {
-		if err := rs.Scan(&filecat, &fcatcount, &fcatsize); err != nil {
-			return nil, err
-		}
-		fstats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
-	}
-	return fstats, nil
-}
-
 // FTStatsDirs returns the FileTypeStats per dir
 // call with dir="/my/dir/*" to get the recursive totals under that dir
 func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeDirStats, error) {
-	// TODO: maybe nicer solution using PIVOT or similar?
+	// TODO: maybe nicer solution to get the "top level" path for each listed category?
 	wp := f.dirsWherePredicate(dirs)
 	rs, err := f.DB.Query(fmt.Sprintf(
-		"SELECT dirs.dir, cats.filecat, SUM(dircatstats.count) AS fcatcount, SUM(dircatstats.size) AS fcatsize"+
-			" FROM dirs, cats, dircatstats"+
-			" WHERE dircatstats.catid=cats.id AND dircatstats.dirid=dirs.id AND (%s)"+
-			" GROUP BY dirs.dir, cats.filecat"+
-			" ORDER BY dirs.dir", wp))
+		`SELECT fileinfo.path, cats.filecat, COUNT(fileinfo.path) AS fcatcount, SUM(fileinfo.size) AS fcatsize FROM fileinfo, cats
+			WHERE fileinfo.catid=cats.id AND (%s)
+			GROUP BY cats.filecat
+			ORDER BY fileinfo.path`, wp))
 	if err != nil {
 		return nil, err
 	}
@@ -164,74 +99,46 @@ func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeDirStats, er
 
 	var (
 		dir       string
+		path      string
 		filecat   string
 		fcatcount uint
 		fcatsize  uint64
 		fdstats   = make(types.FileTypeDirStats)
 	)
 	for rs.Next() {
-		if err := rs.Scan(&dir, &filecat, &fcatcount, &fcatsize); err != nil {
+		if err := rs.Scan(&path, &filecat, &fcatcount, &fcatsize); err != nil {
 			return nil, err
+		}
+		if strings.HasSuffix(path, "/") { // since we order by path, we can be sure that the first "new" path will be assigned to dir before categories
+			dir = path // TODO (maybe): get the query result to list only the dir also for other file categories
+			// now the returned dir path is inaccurate if more than 1 dirs are scanned
 		}
 		if fdstats[dir] == nil {
 			ftstats := make(types.FileTypeStats)
-			ftstats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
 			fdstats[dir] = &types.FTypeDirStat{FTypeStats: ftstats, TotCount: 0, TotSize: 0}
-		} else {
-			if fdstats[dir].FTypeStats[filecat] == nil {
-				fdstats[dir].FTypeStats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
-			} else {
-				fdstats[dir].FTypeStats[filecat].FileCount += fcatcount
-				fdstats[dir].FTypeStats[filecat].NumBytes += fcatsize
-			}
-			fdstats[dir].TotCount += fcatcount
-			fdstats[dir].TotSize += fcatsize
 		}
+		fdstats[dir].FTypeStats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
+		fdstats[dir].TotCount += fcatcount
+		fdstats[dir].TotSize += fcatsize
 	}
 	return fdstats, nil
 }
 
-// ResetDirStats sets all counters for this dir to zero
-func (f *FileTypeStatsDB) ResetDirStats(dir string) error {
-	rs, err := f.DB.Query(fmt.Sprintf("SELECT * FROM dirs WHERE dir='%s'", dir))
-	if err != nil {
-		return nil
-	}
-	defer rs.Close()
-	if rs.Next() {
-		var dirid int
-		var dirpath string
-		rs.Scan(&dirid, &dirpath)
-		// set all categories for this dir to 0
-		if err := f.qryCUD(fmt.Sprintf("UPDATE dircatstats SET count=0, size=0 WHERE dirid=%d", dirid)); err != nil {
-			return nil
-		}
-		if err := f.qryCUD(fmt.Sprintf("UPDATE dirs SET count=0, size=0 WHERE id=%d", dirid)); err != nil {
-			return nil
-		}
-	}
-	return nil
-}
-
-// UpdateDirStatsAdd adds the count and size of the parameter fstats to the values for filecat for dir dir
-func (f *FileTypeStatsDB) UpdateDirStatsAdd(dir, filecat string, fstats *types.FTypeStat) error {
+// UpdateFileStats upserts the file in path with size
+func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) error {
 	catid, err := f.selsertIdText("cats", "filecat", filecat)
 	if err != nil {
 		return err
 	}
-	dirid, err := f.selsertIdText("dirs", "dir", dir) // should combine with last query for performance
-	if err != nil {
-		return err
-	}
 	// upsert file type stats for dir
-	if err := f.qryCUD(fmt.Sprintf(
-		"INSERT INTO dircatstats(dirid, catid, count, size) VALUES(%d, %d, %d, %d)"+
-			" ON CONFLICT(dirid, catid) DO"+
-			" UPDATE SET count=count+%d, size=size+%d", dirid, catid, fstats.FileCount, fstats.NumBytes, fstats.FileCount, fstats.NumBytes)); err != nil {
+
+	if _, err := f.DB.Exec((fmt.Sprintf(
+		`INSERT INTO fileinfo(path, size, catid) VALUES('%s', %d, %d) 
+			ON CONFLICT(path) DO 
+			UPDATE SET size=%d, catid=%d`, path, size, catid, size, catid))); err != nil {
 		return err
 	}
-	// update dir totals for dir
-	return f.qryCUD(fmt.Sprintf("UPDATE dirs SET count=count+%d, size-size+%d WHERE id=%d", fstats.FileCount, fstats.NumBytes, dirid))
+	return nil
 }
 
 // returns table.id where field==value, inserts value if not exist (id must be AUTOINCREMENT)
@@ -255,20 +162,21 @@ func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error)
 	return id, nil
 }
 
-// RDirStats reads stats for dir
-func RDirStats(dir string) *types.FileTypeStats {
-	return nil
-}
-
 // dirsWherePredicate returns the WHERE clause part selecting the dirs according to input dir list
+// we'll be using GLOB, so the following behaviour is "translated"
+// '/path/to/subdir' || '/path/to/subdir/' => GLOB '/path/to/subdir/*' AND NOT GLOB '/path/to/subdir/*/*' => this gives the totals of the FILES in '/path/to/subdir/'
+// '/path/to/subdir*' || '/path/to/subdir*/' => GLOB '/path/to/subdir*/*' AND NOT GLOB '/path/to/subdir*/*/*' => this gives the totals of the FILES in '/path/to/subdir*/'
+// '/path/to/subdir/*' => GLOB '/path/to/subdir/*' => this gives the totals of the FILES in '/path/to/subdir/' AND BELOW
+// '/path/to/subdir*/*' => GLOB '/path/to/subdir*/*' => this gives the totals of the FILES in '/path/to/subdir*/' AND BELOW
 func (f *FileTypeStatsDB) dirsWherePredicate(dirs []string) string {
 	pred := make([]string, len(dirs))
 	for i, d := range dirs {
-		if strings.Contains(d, "*") {
-			pfx := strings.TrimSuffix(strings.Split(d, "*")[0], "/") // somehow we need the extra trim for the numbers to add up, as well as the exact match
-			pred[i] = fmt.Sprintf("dirs.dir LIKE '%s%%' OR dirs.dir='%s'", pfx, pfx)
+		if strings.HasSuffix(d, "*/*") || strings.HasSuffix(d, "/*") {
+			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s')", d)
+		} else if strings.HasSuffix(d, "*") || strings.HasSuffix(d, "*/") {
+			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s*/*' AND NOT fileinfo.path GLOB '%s*/*/*')", d, d)
 		} else {
-			pred[i] = fmt.Sprintf("dirs.dir='%s'", d)
+			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s/*' AND NOT fileinfo.path GLOB '%s*/*')", d, d)
 		}
 	}
 	return strings.Join(pred, " OR ")
