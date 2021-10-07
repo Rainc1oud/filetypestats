@@ -10,12 +10,6 @@ import (
 	"github.com/ppenguin/filetypestats/types"
 )
 
-type FileTypeStatsDB struct {
-	// self *FileTypeStatsDB
-	fileName string
-	DB       *sql.DB
-}
-
 // file categories are added when encountered, no need to hard-code and/or init in the DB
 // TODO: somehow the categories seem not to cover all posible types, this might be an issue with h2non/filetype?
 // var FileCategories = func() []string { return []string{"Audio", "Video", "Image", "Application", "Other"} }
