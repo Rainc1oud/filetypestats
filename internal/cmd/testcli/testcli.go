@@ -49,7 +49,8 @@ func usage() {
 			"\tscan: scans all dirs given recursively and stores statistics per dir in scandb\n"+
 			"\tshow: gets the totals from scandb for the given dirs.\n"+
 			"\t\tTo show totals under a dir, use the special form --dir='/dir/to/*' (remember quoting if necessary)\n"+
-			"\tdump: dumps all selected dirs with their stats", os.Args[0])
+			"\tdump: dumps all selected dirs with their stats\n"+
+			"\twatch: watch selected dirs for modification (blocking)\n", os.Args[0])
 	os.Exit(0)
 }
 

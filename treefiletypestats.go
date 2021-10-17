@@ -31,19 +31,19 @@ func NewTreeFileTypeStats(dirs []string, database string) (*TreeFileTypeStats, e
 	if fdb, err = ftsdb.New(database, true); err != nil {
 		return nil, err
 	}
-	defer fdb.Close()
-
 	tfts := &TreeFileTypeStats{
 		dirs:  gogenutils.FilterCommonRootDirs(dirs),
 		ftsDB: fdb,
 	}
 	tfts.dirsWatcher = notifywatch.NewNotifyWatchDirs(dirs, tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove}...)
+	// defer tfts.ftsDB.Close() // this only closes the DB after this object is GC'd?
 	return tfts, nil
 }
 
 // Watch all registered dirs with the notify watcher
 func (tfts *TreeFileTypeStats) Watch() {
 	tfts.dirsWatcher.WatchAll()
+	tfts.ftsDB.Close() // TODO: close DB after all watchers finished... probably opening/closing should be one level deeper?
 }
 
 // ScanFullSync does a full scan over all registered dirs synchronously and updates the database

@@ -14,9 +14,13 @@ $(info CMARCH==$(CMARCH))
 IMGNAME = rcbuild-go:1.16.8-$(CMARCH)
 DOCKERPULL = $(DOCKEREXE) pull --tls-verify=false docker://1nnoserv:15000/xbuildenv/$(IMGNAME)
 
+# std Makefile stuff
+GOSRC := $(wildcard *.go types/*.go ftsdb/*.go internal/cmd/testcli/*.go)
+$(info GOSRC: $(GOSRC))
+
 .PHONY: clean
 clean:
-	rm -f *.sqlite
+	# rm -f *.sqlite
 	rm -rf build/
 
 .PHONY: testcli
