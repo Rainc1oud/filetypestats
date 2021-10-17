@@ -1,5 +1,8 @@
 package filetypestats
 
+// legacy definitions for backwards compatibility
+// recommended usage through TreeFileTypeStats
+
 import (
 	"fmt"
 	"io/fs"

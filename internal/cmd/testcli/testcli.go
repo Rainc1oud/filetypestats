@@ -36,6 +36,8 @@ func main() {
 	// 	show(scandirs, *dbfile)
 	case "dump":
 		dump(scandirs, *dbfile)
+	case "watch":
+		watch(scandirs, *dbfile)
 	default:
 		usage()
 	}
@@ -98,6 +100,16 @@ func dump(dirs []string, file string) {
 	fmt.Printf("Query took %s\n\n", time.Since(ts))
 	fmt.Println("Query totals:")
 	printdirstats(fdstats)
+}
+
+func watch(dirs []string, file string) {
+	var fts *filetypestats.TreeFileTypeStats
+	var err error
+	if fts, err = filetypestats.NewTreeFileTypeStats(dirs, file); err != nil {
+		exiterr(err)
+	}
+	fmt.Printf("Watching dirs %v for changes (blocking), press ctrl-c to stop; open a second instance to query the database (read-only)", dirs)
+	fts.Watch()
 }
 
 func printstats(fstats types.FileTypeStats) {

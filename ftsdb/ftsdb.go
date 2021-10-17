@@ -141,6 +141,17 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 	return nil
 }
 
+// DeleteFileStats deletes the file/dir in path, if it's a dir, the delete is recursive
+func (f *FileTypeStatsDB) DeleteFileStats(path string) error {
+	// if we delete "<path>/*" OR "<path>" from the DB, we catch automatically the recursife case if it was a dir and existed, otherwise we delete just the file
+	if _, err := f.DB.Exec((fmt.Sprintf(
+		`DELETE FROM fileinfo WHERE 
+			fileinfo.path GLOB "%s/*" OR fileinfo.path="%s"`, path, path))); err != nil {
+		return err
+	}
+	return nil
+}
+
 // returns table.id where field==value, inserts value if not exist (id must be AUTOINCREMENT)
 func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error) {
 	var id int

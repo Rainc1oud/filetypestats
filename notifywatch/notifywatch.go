@@ -14,7 +14,7 @@ type notifyWatchers map[string]*NotifyWatcher
 type NotifyHandlerFun func(*notify.EventInfo) error
 
 type NotifyWatchDirs struct {
-	watchers map[string]*NotifyWatcher
+	watchers notifyWatchers
 	wg       *sync.WaitGroup
 }
 

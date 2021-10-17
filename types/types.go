@@ -1,6 +1,8 @@
 package types
 
 type FTypeStat struct {
+	Path      string
+	FType     string
 	NumBytes  uint64
 	FileCount uint
 }
@@ -15,9 +17,3 @@ type FTypeDirStat struct {
 }
 
 type FileTypeDirStats map[string]*FTypeDirStat
-
-// type DirTreesInfo struct {
-// 	statsDB        *FileTypeStatsDB
-// 	watchDirs      []string
-// 	notifyWatchers *NotifyWatchers
-// }

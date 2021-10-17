@@ -33,7 +33,7 @@ func TestNotifyWatcher_Watch(t *testing.T) {
 		return nil
 	}
 
-	watch := NewNotifyWatcher(filepath.Join(tdir, "..", ".."), true, h, notify.Create, notify.Remove)
+	watch := NewNotifyWatcher(filepath.Join(tdir, "..", ".."), true, h, notify.Create, notify.Remove, notify.Write)
 	go func() {
 		watch.Watch()
 	}()
