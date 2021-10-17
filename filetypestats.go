@@ -1,129 +1,43 @@
 package filetypestats
 
+// legacy definitions for backwards compatibility
+// recommended usage through TreeFileTypeStats
+
 import (
 	"fmt"
 	"io/fs"
 	"os"
 
-	"github.com/karrick/godirwalk"
 	"github.com/ppenguin/filetype"
-	"github.com/ppenguin/gogenutils"
+
+	"github.com/ppenguin/filetypestats/types"
 )
 
-type ftypeStat struct {
-	NumBytes  int64
-	FileCount int
-}
+func getFTStat(path string) (*types.FTypeStat, error) {
+	var (
+		err error = nil
+		fi  fs.FileInfo
+	)
 
-type FileTypeStats map[string]*ftypeStat
-
-func WalkFileTypeStats(scanDirs []string) (FileTypeStats, error) {
-	var err error
-	ftStats := make(FileTypeStats)
-	pFtStats := &ftStats
-
-	sdirs := gogenutils.FilterCommonRootDirs(scanDirs)
-	if len(sdirs) < 1 {
-		return nil, fmt.Errorf("WalkFileTypeStats:: no scan path(s) specified")
-	}
-
-	for _, d := range sdirs {
-		if pFtStats, err = fileTypeStats(d, &ftStats); err != nil {
-			return nil, err
-		}
-	}
-	return *pFtStats, nil
-}
-
-func fileTypeStats(scanRoot string, statsData *FileTypeStats) (*FileTypeStats, error) {
-
-	if err := godirwalk.Walk(scanRoot, &godirwalk.Options{
-		Callback: func(osPathname string, de *godirwalk.Dirent) error {
-			var (
-				err   error = nil
-				fi    fs.FileInfo
-				ftype string
-			)
-
-			if de.IsRegular() {
-				// fullpath := osPathname + "/" + de.Name()
-				fi, err = os.Stat(osPathname)
-				if err == nil {
-					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						if (*statsData)[ftype] == nil {
-							(*statsData)[ftype] = new(ftypeStat)
-						}
-						(*statsData)[ftype].FileCount += 1
-						(*statsData)[ftype].NumBytes += fi.Size()
-						return err
-					}
-				}
-			}
-
-			if err != nil {
-				fmt.Fprint(os.Stderr, err.Error())
-			}
-			return err
-		},
-		Unsorted: true, // (optional) set true for faster yet non-deterministic enumeration (see godoc)
-		ErrorCallback: func(s string, e error) godirwalk.ErrorAction {
-			fmt.Fprintf(os.Stderr, "warning: %s reading %s\n", e.Error(), s)
-			return godirwalk.SkipNode
-		},
-	}); err != nil {
+	if fi, err = os.Lstat(path); err != nil {
 		return nil, err
 	}
-	return statsData, nil
-}
 
-func WalkFileSizeCount(scanDirs []string) (*ftypeStat, error) {
-	var err error
-	pFStats := &ftypeStat{}
+	fts := &types.FTypeStat{}
 
-	sdirs := gogenutils.FilterCommonRootDirs(scanDirs)
-	if len(sdirs) < 1 {
-		return nil, fmt.Errorf("WalkFileTypeStats:: no scan path(s) specified")
+	if fi.IsDir() {
+		fts.FType = "dir"
+		fts.Path = path + "/" // add / to make filtering more consistent in SELECT queries
+		fts.FileCount = 0
+		fts.NumBytes = 0
+		return fts, nil
 	}
 
-	for _, d := range sdirs {
-		if pFStats, err = fileSizeCount(d, pFStats); err != nil {
-			return nil, err
-		}
+	if fts.FType, err = filetype.FileClass(path); err == nil {
+		fts.Path = path
+		fts.NumBytes = uint64(fi.Size())
+		fts.FileCount = 1 // unnecessary, we may need to optimise the handling
+		return fts, nil
 	}
-	return pFStats, nil
-}
-
-// fileSizeCount is the recursive callback that just counts number and size of files
-func fileSizeCount(scanRoot string, fstats *ftypeStat) (*ftypeStat, error) {
-
-	if err := godirwalk.Walk(scanRoot, &godirwalk.Options{
-		Callback: func(osPathname string, de *godirwalk.Dirent) error {
-			var (
-				err error = nil
-				fi  fs.FileInfo
-			)
-
-			if de.IsRegular() {
-				// fullpath := osPathname + "/" + de.Name()
-				fi, err = os.Stat(osPathname)
-				if err == nil {
-					fstats.FileCount += 1
-					fstats.NumBytes += fi.Size()
-				}
-			}
-
-			if err != nil {
-				fmt.Fprint(os.Stderr, err.Error())
-			}
-			return err
-		},
-		Unsorted: true, // (optional) set true for faster yet non-deterministic enumeration (see godoc)
-		ErrorCallback: func(s string, e error) godirwalk.ErrorAction {
-			fmt.Fprintf(os.Stderr, "warning: %s reading %s\n", e.Error(), s)
-			return godirwalk.SkipNode
-		},
-	}); err != nil {
-		return nil, err
-	}
-	return fstats, nil
+	return nil, fmt.Errorf("no info could be obtained for %v", fi)
 }
