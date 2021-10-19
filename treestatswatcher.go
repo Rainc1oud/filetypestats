@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/karrick/godirwalk"
 	"github.com/ppenguin/filetype"
@@ -15,25 +17,28 @@ import (
 	"github.com/rjeczalik/notify"
 )
 
-type TreeFileTypeStats struct {
-	dirs        []string // not strictly necessary (because also held in child objects), but a convenience to check dirs later
-	dirsWatcher *notifywatch.NotifyWatchDirs
-	ftsDB       *ftsdb.FileTypeStatsDB
+type TreeStatsWatcher struct {
+	dirs            []string // not strictly necessary (because also held in child objects), but a convenience to check dirs later
+	dirsWatcher     *notifywatch.NotifyWatchDirs
+	ftsDB           *ftsdb.FileTypeStatsDB
+	scanning        bool
+	lastScanStarted time.Time
 }
 
-// NewTreeFileTypeStats is the top level constructor featuring:
+// NewTreeStatsWatcher is the top level constructor featuring:
 //  - a recursive watcher and scanner for all files in the given param dirs
 //	- a sqlite DB session (param database: file name)
-func NewTreeFileTypeStats(dirs []string, database string) (*TreeFileTypeStats, error) {
+func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, error) {
 	var fdb *ftsdb.FileTypeStatsDB
 	var err error
 
 	if fdb, err = ftsdb.New(database, true); err != nil {
 		return nil, err
 	}
-	tfts := &TreeFileTypeStats{
-		dirs:  gogenutils.FilterCommonRootDirs(dirs),
-		ftsDB: fdb,
+	tfts := &TreeStatsWatcher{
+		dirs:     gogenutils.FilterCommonRootDirs(dirs),
+		ftsDB:    fdb,
+		scanning: false,
 	}
 	tfts.dirsWatcher = notifywatch.NewNotifyWatchDirs(dirs, tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove}...)
 	// defer tfts.ftsDB.Close() // this only closes the DB after this object is GC'd?
@@ -41,25 +46,35 @@ func NewTreeFileTypeStats(dirs []string, database string) (*TreeFileTypeStats, e
 }
 
 // Watch all registered dirs with the notify watcher
-func (tfts *TreeFileTypeStats) Watch() {
+func (tfts *TreeStatsWatcher) Watch() {
 	tfts.dirsWatcher.WatchAll()
 	tfts.ftsDB.Close() // TODO: close DB after all watchers finished... probably opening/closing should be one level deeper?
 }
 
 // ScanFullSync does a full scan over all registered dirs synchronously and updates the database
 // This can take a long time (minutes to hours) to complete
-func (tfts *TreeFileTypeStats) ScanFullSync() error {
-	for _, d := range tfts.dirs { // TODO: summarise error and try all dirs
+func (tfts *TreeStatsWatcher) ScanSync() error {
+	tfts.scanning = true
+	tfts.lastScanStarted = time.Now()
+	var errl []string
+	for _, d := range tfts.dirs {
 		if err := tfts.scanDir(d); err != nil {
-			return err
+			errl = append(errl, fmt.Sprintf("error [%s]: %s", d, err.Error()))
 		}
+	}
+
+	tfts.ftsDB.DeleteOlderThan(tfts.lastScanStarted) // delete all entries from before the scan (i.e. not updated during the scan, because this means they were deleted)
+	tfts.scanning = false
+
+	if len(errl) > 0 {
+		return fmt.Errorf(strings.Join(errl, "\n"))
 	}
 	return nil
 }
 
 // scanDir scans the given scanRoot recursively and updates the database
 // This can take a long time (minutes to hours) to complete
-func (tfts *TreeFileTypeStats) scanDir(scanRoot string) error {
+func (tfts *TreeStatsWatcher) scanDir(scanRoot string) error {
 
 	if err := godirwalk.Walk(scanRoot, &godirwalk.Options{
 		AllowNonDirectory: true,
@@ -101,7 +116,7 @@ func (tfts *TreeFileTypeStats) scanDir(scanRoot string) error {
 
 // onFileChanged is the inotify event handler passed to the notify watcher
 // for now we handle create, remove, write (this is like modify but guaranteed on all platforms)
-func (tfts *TreeFileTypeStats) onFileChanged(eventInfo *notify.EventInfo) error {
+func (tfts *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
 	switch (*eventInfo).Event() {
 	case notify.Create, notify.Write:
 		if fts, err := getFTStat((*eventInfo).Path()); err == nil {

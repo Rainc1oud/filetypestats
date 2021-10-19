@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/ppenguin/filetypestats/types"
@@ -48,6 +49,25 @@ func New(file string, create bool) (*FileTypeStatsDB, error) {
 	return ftdb, nil
 }
 
+// NewNoOpen instantiates a FileTypeStatsDB object without opening the DB (but just checking existence of the file)
+func NewNoOpen(file string) (*FileTypeStatsDB, error) {
+	var err error
+	ftdb := new(FileTypeStatsDB)
+	ftdb.fileName = file
+	if _, err = os.Open(file); err != nil {
+		return nil, err
+	}
+	return ftdb, nil
+}
+
+func (f *FileTypeStatsDB) Open() error {
+	var err error
+	if f.DB, err = sql.Open("sqlite3", f.fileName); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (f *FileTypeStatsDB) Close() {
 	f.DB.Close()
 }
@@ -61,11 +81,13 @@ func (f *FileTypeStatsDB) init() error {
 
 func (f *FileTypeStatsDB) createTables() error {
 
+	// the updated field is INTEGER as unix time (sec), for efficientcy (https://stackoverflow.com/q/31667495/12771809)
 	if _, err := f.DB.Exec(
 		`CREATE TABLE IF NOT EXISTS fileinfo (
 			path TEXT NOT NULL,
 			size UNSIGNED BIGINT,
 			catid INTEGER NOT NULL,
+			updated INTEGER
 			PRIMARY KEY (path)
 		);`); err != nil {
 		return err
@@ -133,9 +155,18 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 	// upsert file type stats for dir
 
 	if _, err := f.DB.Exec((fmt.Sprintf(
-		`INSERT INTO fileinfo(path, size, catid) VALUES('%s', %d, %d) 
+		`INSERT INTO fileinfo(path, size, catid) VALUES('%s', %d, %d, %d) 
 			ON CONFLICT(path) DO 
-			UPDATE SET size=%d, catid=%d`, path, size, catid, size, catid))); err != nil {
+			UPDATE SET size=%d, catid=%d, updated=%d`, path, size, catid, time.Now().Unix(), size, catid, time.Now().Unix()))); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteOlderThan deletes all entries older than (i.e. not updated after) t
+func (f *FileTypeStatsDB) DeleteOlderThan(t time.Time) error {
+	if _, err := f.DB.Exec((fmt.Sprintf(
+		`DELETE FROM fileinfo WHERE fileinfo.updated < %d`, t.Unix()))); err != nil {
 		return err
 	}
 	return nil
