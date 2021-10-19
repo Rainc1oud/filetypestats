@@ -104,9 +104,9 @@ func dump(dirs []string, file string) {
 }
 
 func watch(dirs []string, file string) {
-	var fts *filetypestats.TreeFileTypeStats
+	var fts *filetypestats.TreeStatsWatcher
 	var err error
-	if fts, err = filetypestats.NewTreeFileTypeStats(dirs, file); err != nil {
+	if fts, err = filetypestats.NewTreeStatsWatcher(dirs, file); err != nil {
 		exiterr(err)
 	}
 	fmt.Printf("Watching dirs %v for changes (blocking), press ctrl-c to stop; open a second instance to query the database (read-only)", dirs)
