@@ -1,6 +1,11 @@
 package filetypestats
 
-import "github.com/ppenguin/filetypestats/ftsdb"
+import (
+	"path/filepath"
+
+	"github.com/ppenguin/filetypestats/ftsdb"
+	"github.com/ppenguin/filetypestats/types"
+)
 
 // query functions for the file info DB generated and maintained by TreeStatsWatcher
 
@@ -21,4 +26,18 @@ func NewTreeStatsInfo(filedb string) (*TreeStatsInfo, error) {
 		dbFile: filedb,
 		ftsDB:  fdb,
 	}, nil
+}
+
+// FTStatsDirs returns the FileTypeStats per dir
+// call with dir="/my/dir/*" to get the recursive totals under that dir, or set recursive=true
+func (tsi *TreeStatsInfo) FTStatsDirs(dirs []string, recursive bool) (types.FileTypeDirStats, error) {
+	tsi.ftsDB.Open()
+	if recursive {
+		for i, d := range dirs {
+			dirs[i] = filepath.Join(d, "*")
+		}
+	}
+	res, err := tsi.ftsDB.FTStatsDirs(dirs)
+	tsi.ftsDB.Close()
+	return res, err
 }
