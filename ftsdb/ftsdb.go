@@ -87,7 +87,7 @@ func (f *FileTypeStatsDB) createTables() error {
 			path TEXT NOT NULL,
 			size UNSIGNED BIGINT,
 			catid INTEGER NOT NULL,
-			updated INTEGER
+			updated INTEGER,
 			PRIMARY KEY (path)
 		);`); err != nil {
 		return err
@@ -155,7 +155,7 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 	// upsert file type stats for dir
 
 	if _, err := f.DB.Exec((fmt.Sprintf(
-		`INSERT INTO fileinfo(path, size, catid) VALUES('%s', %d, %d, %d) 
+		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, %d, %d) 
 			ON CONFLICT(path) DO 
 			UPDATE SET size=%d, catid=%d, updated=%d`, path, size, catid, time.Now().Unix(), size, catid, time.Now().Unix()))); err != nil {
 		return err

@@ -1,8 +1,10 @@
 package notifywatch
 
 import (
+	"fmt"
 	"log"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/ppenguin/gogenutils"
@@ -43,15 +45,21 @@ func (nwd *NotifyWatchDirs) AddWatcher(dir string, recursive bool, handler Notif
 }
 
 // Watch starts watching (all watchers)
-func (nwd *NotifyWatchDirs) WatchAll() {
+func (nwd *NotifyWatchDirs) WatchAll() error {
+	var errl []string
 	for _, w := range nwd.watchers {
 		nwd.wg.Add(1)
 		go func(wg *sync.WaitGroup, watcher *NotifyWatcher) {
-			watcher.Watch()
+			err := watcher.Watch()
+			errl = append(errl, err.Error())
 			wg.Done()
 		}(nwd.wg, w)
 	}
 	nwd.wg.Wait()
+	if len(errl) > 0 {
+		return fmt.Errorf(strings.Join(errl, "\n"))
+	}
+	return nil
 }
 
 func (nwd *NotifyWatchDirs) StopAll() {
@@ -83,9 +91,10 @@ func NewNotifyWatcher(dir string, recursive bool, handler NotifyHandlerFun, even
 	return nw
 }
 
-func (nw *NotifyWatcher) Watch() {
+func (nw *NotifyWatcher) Watch() error {
 	if err := notify.Watch(nw.watchdir, nw.eventInfo, nw.events...); err != nil {
-		log.Printf("error: %s", err.Error())
+		// log.Printf("error: %s", err.Error())
+		return err
 	}
 	defer notify.Stop(nw.eventInfo)
 
@@ -100,6 +109,7 @@ func (nw *NotifyWatcher) Watch() {
 			break
 		}
 	}
+	return nil
 }
 
 func (nw *NotifyWatcher) Stop() {

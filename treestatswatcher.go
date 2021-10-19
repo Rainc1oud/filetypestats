@@ -46,9 +46,10 @@ func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, err
 }
 
 // Watch all registered dirs with the notify watcher
-func (tfts *TreeStatsWatcher) Watch() {
-	tfts.dirsWatcher.WatchAll()
+func (tfts *TreeStatsWatcher) Watch() error {
+	err := tfts.dirsWatcher.WatchAll()
 	tfts.ftsDB.Close() // TODO: close DB after all watchers finished... probably opening/closing should be one level deeper?
+	return err
 }
 
 // ScanFullSync does a full scan over all registered dirs synchronously and updates the database
