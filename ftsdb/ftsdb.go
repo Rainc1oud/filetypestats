@@ -19,6 +19,7 @@ type FileTypeStatsDB struct {
 	// self *FileTypeStatsDB
 	fileName string
 	DB       *sql.DB
+	IsOpened bool
 }
 
 // New returns a DB instance to the sqlite db in existing file or creates it if it doesn't exist and create==true
@@ -42,6 +43,7 @@ func New(file string, create bool) (*FileTypeStatsDB, error) {
 	if ftdb.DB, err = sql.Open("sqlite3", file); err != nil {
 		return nil, err
 	}
+	ftdb.IsOpened = true
 
 	if err = ftdb.init(); err != nil {
 		return nil, err
@@ -50,26 +52,29 @@ func New(file string, create bool) (*FileTypeStatsDB, error) {
 }
 
 // NewNoOpen instantiates a FileTypeStatsDB object without opening the DB (but just checking existence of the file)
+// a *FileTypeStatsDB is always returned, since a non-existing DB may come into existence later
 func NewNoOpen(file string) (*FileTypeStatsDB, error) {
 	var err error
 	ftdb := new(FileTypeStatsDB)
 	ftdb.fileName = file
-	if _, err = os.Open(file); err != nil {
-		return nil, err
-	}
-	return ftdb, nil
+	_, err = os.Open(file)
+	return ftdb, err
 }
 
 func (f *FileTypeStatsDB) Open() error {
 	var err error
-	if f.DB, err = sql.Open("sqlite3", f.fileName); err != nil {
-		return err
+	if !f.IsOpened {
+		if f.DB, err = sql.Open("sqlite3", f.fileName); err != nil {
+			return err
+		}
 	}
+	f.IsOpened = true
 	return nil
 }
 
 func (f *FileTypeStatsDB) Close() {
 	f.DB.Close()
+	f.IsOpened = false
 }
 
 func (f *FileTypeStatsDB) init() error {
@@ -140,7 +145,7 @@ func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeDirStats, er
 			fdstats[dir] = &types.FTypeDirStat{FTypeStats: ftstats, TotCount: 0, TotSize: 0}
 		}
 		fdstats[dir].FTypeStats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
-		fdstats[dir].TotCount += fcatcount
+		fdstats[dir].TotCount += fcatcount // TODO: summing outside of query is a bit of an anti-pattern? Move into separate query?
 		fdstats[dir].TotSize += fcatsize
 	}
 	return fdstats, nil

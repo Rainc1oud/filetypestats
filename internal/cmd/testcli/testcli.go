@@ -50,7 +50,8 @@ func usage() {
 			"\tshow: gets the totals from scandb for the given dirs.\n"+
 			"\t\tTo show totals under a dir, use the special form --dir='/dir/to/*' (remember quoting if necessary)\n"+
 			"\tdump: dumps all selected dirs with their stats\n"+
-			"\twatch: watch selected dirs for modification (blocking)\n", os.Args[0])
+			"\twatch: watch selected dirs for modification (blocking)\n\nFlags:\n", os.Args[0])
+	flag.PrintDefaults()
 	os.Exit(0)
 }
 

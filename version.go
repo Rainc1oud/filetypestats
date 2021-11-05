@@ -1,4 +1,4 @@
 package filetypestats
 
 // Version exposes the current package version.
-const Version = "v0.3.1"
+const Version = "v0.3.2"
