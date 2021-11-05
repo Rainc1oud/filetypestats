@@ -18,10 +18,17 @@ DOCKERPULL = $(DOCKEREXE) pull --tls-verify=false docker://1nnoserv:15000/xbuild
 GOSRC := $(wildcard *.go types/*.go ftsdb/*.go internal/cmd/testcli/*.go)
 $(info GOSRC: $(GOSRC))
 
+.PHONY: all
+all: testcli
+
 .PHONY: clean
 clean:
 	# rm -f *.sqlite
 	rm -rf build/
+
+.PHONY: test
+test:
+	go test -v ./...
 
 .PHONY: testcli
 testcli: build/$(BPFX)/testcli

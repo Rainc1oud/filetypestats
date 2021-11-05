@@ -140,7 +140,7 @@ func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeDirStats, er
 			fdstats[dir] = &types.FTypeDirStat{FTypeStats: ftstats, TotCount: 0, TotSize: 0}
 		}
 		fdstats[dir].FTypeStats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
-		fdstats[dir].TotCount += fcatcount
+		fdstats[dir].TotCount += fcatcount // TODO: summing outside of query is a bit of an anti-pattern? Move into separate query?
 		fdstats[dir].TotSize += fcatsize
 	}
 	return fdstats, nil
