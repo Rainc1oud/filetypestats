@@ -26,27 +26,27 @@ func NewNotifyWatchDirs(rootdirs []string, handler NotifyHandlerFun, events ...n
 		watchers: make(notifyWatchers),
 		wg:       &sync.WaitGroup{},
 	}
-	if len(rootdirs) < 1 {
+	if len(rootdirs) < 1 { // if no dirs, return an empty NWD instance to which we can add event handlers later
 		return nwd
 	}
 	rdirs := gogenutils.FilterCommonRootDirs(rootdirs) // sanitise to only include disjoint roots
 	for _, d := range rdirs {
-		addWatcher(nwd, d, true, handler, events)
+		addWatcher(nwd, d, handler, events)
 	}
 	return nwd
 }
 
-func addWatcher(nwd *NotifyWatchDirs, dir string, recursive bool, handler NotifyHandlerFun, events []notify.Event) error {
-	return nwd.AddWatcher(dir, recursive, handler, events)
+func addWatcher(nwd *NotifyWatchDirs, dir string, handler NotifyHandlerFun, events []notify.Event) error {
+	return nwd.AddWatcher(dir, handler, events)
 }
-func (nwd *NotifyWatchDirs) AddWatcher(dir string, recursive bool, handler NotifyHandlerFun, events []notify.Event) error {
-	nwd.watchers[dir] = NewNotifyWatcher(dir, recursive, handler, events...)
+func (nwd *NotifyWatchDirs) AddWatcher(dir string, handler NotifyHandlerFun, events []notify.Event) error {
+	nwd.watchers[dir] = NewNotifyWatcher(dir, handler, events...)
 	return nil
 }
 
-// Watch starts watching (all watchers)
+// WatchAll (blocking) starts watching (all watchers) and exits after the last watcher is terminated
 func (nwd *NotifyWatchDirs) WatchAll() error {
-	var errl []string
+	errl := []string{}
 	for _, w := range nwd.watchers {
 		nwd.wg.Add(1)
 		go func(wg *sync.WaitGroup, watcher *NotifyWatcher) {
@@ -62,10 +62,17 @@ func (nwd *NotifyWatchDirs) WatchAll() error {
 	return nil
 }
 
-func (nwd *NotifyWatchDirs) StopAll() {
+func (nwd *NotifyWatchDirs) StopAll() error {
+	errl := []string{}
 	for _, w := range nwd.watchers {
-		w.Stop()
+		if err := w.Stop(); err != nil {
+			errl = append(errl, err.Error())
+		}
 	}
+	if len(errl) > 0 {
+		return fmt.Errorf(strings.Join(errl, "\n"))
+	}
+	return nil
 }
 
 /*** inotify watcher with handler for one (recursive) file tree ***/
@@ -77,10 +84,12 @@ type NotifyWatcher struct {
 	handler   NotifyHandlerFun
 }
 
-func NewNotifyWatcher(dir string, recursive bool, handler NotifyHandlerFun, events ...notify.Event) *NotifyWatcher {
+// NewNotifyWatcher watches the given dir and calls handler on inotify events
+// a dir ending in "/*" will result in a recursive watch
+func NewNotifyWatcher(dir string, handler NotifyHandlerFun, events ...notify.Event) *NotifyWatcher {
 	wdir := dir
-	if recursive {
-		wdir = filepath.Join(dir, "...")
+	if strings.HasSuffix(dir, "/*") { // TODO: this will not work on windows
+		wdir = filepath.Join(strings.TrimSuffix(dir, "/*"), "...")
 	}
 	nw := &NotifyWatcher{
 		eventInfo: make(chan notify.EventInfo, 1), // buffered to ensure no events are dropped
@@ -101,7 +110,7 @@ func (nw *NotifyWatcher) Watch() error {
 	for {
 		ei, ok := <-nw.eventInfo // this should exit the loop when we close the channel by executing nw.Stop()
 		if ok {
-			log.Printf("got event: %v; executing handler...", ei)
+			log.Printf("got event: %v; executing handler...", ei) // FIXME: uncontrolled logging
 			if err := nw.handler(&ei); err != nil {
 				log.Fatalf("failed executing handler for event: %v; %s", ei, err.Error())
 			}
@@ -112,6 +121,10 @@ func (nw *NotifyWatcher) Watch() error {
 	return nil
 }
 
-func (nw *NotifyWatcher) Stop() {
+func (nw *NotifyWatcher) Stop() error {
+	if _, ok := <-nw.eventInfo; !ok {
+		return fmt.Errorf("channel nw.EventInfo already closed")
+	}
 	close(nw.eventInfo) // can we do this? we probably need to be careful in the watch loop?
+	return nil
 }

@@ -28,10 +28,25 @@ func New(file string, create bool) (*FileTypeStatsDB, error) {
 	ftdb := new(FileTypeStatsDB)
 	ftdb.fileName = file
 
-	if _, err = os.Open(file); err != nil {
+	if ftdb.DB, err = openDB(file, create); err != nil {
+		return nil, err
+	}
+	err = ftdb.initDB()
+	ftdb.IsOpened = true
+	return ftdb, err
+}
+
+// would a sensible strategy be to only init upon create?
+// or should init include a check whether the DB (if exists) is indeed a valid initialised one?
+// In that case we should evaluate the init() (return error)
+func openDB(dbfile string, create bool) (*sql.DB, error) {
+	var err error
+	var db *sql.DB
+
+	if _, err = os.Open(dbfile); err != nil {
 		if os.IsNotExist(err) {
 			if create {
-				if _, err := os.Create(file); err != nil {
+				if _, err := os.Create(dbfile); err != nil {
 					return nil, err
 				}
 			} else {
@@ -40,26 +55,21 @@ func New(file string, create bool) (*FileTypeStatsDB, error) {
 		}
 	}
 
-	if ftdb.DB, err = sql.Open("sqlite3", file); err != nil {
+	if db, err = sql.Open("sqlite3", dbfile); err != nil {
 		return nil, err
 	}
-	ftdb.IsOpened = true
-
-	if err = ftdb.init(); err != nil {
-		return nil, err
-	}
-	return ftdb, nil
+	return db, nil
 }
 
 // NewNoOpen instantiates a FileTypeStatsDB object without opening the DB (but just checking existence of the file)
 // a *FileTypeStatsDB is always returned, since a non-existing DB may come into existence later
-func NewNoOpen(file string) (*FileTypeStatsDB, error) {
-	var err error
-	ftdb := new(FileTypeStatsDB)
-	ftdb.fileName = file
-	_, err = os.Open(file)
-	return ftdb, err
-}
+// func NewNoOpen(file string) (*FileTypeStatsDB, error) {
+// 	var err error
+// 	ftdb := new(FileTypeStatsDB)
+// 	ftdb.fileName = file
+// 	_, err = os.Open(file)
+// 	return ftdb, err
+// }
 
 func (f *FileTypeStatsDB) Open() error {
 	var err error
@@ -77,7 +87,7 @@ func (f *FileTypeStatsDB) Close() {
 	f.IsOpened = false
 }
 
-func (f *FileTypeStatsDB) init() error {
+func (f *FileTypeStatsDB) initDB() error {
 	if err := f.createTables(); err != nil {
 		return err
 	}
