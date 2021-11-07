@@ -32,17 +32,32 @@ func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, err
 	var fdb *ftsdb.FileTypeStatsDB
 	var err error
 
-	if fdb, err = ftsdb.New(database, true); err != nil {
-		return nil, err
-	}
+	fdb, err = ftsdb.New(database, true)
 	tfts := &TreeStatsWatcher{
 		dirs:     gogenutils.FilterCommonRootDirs(dirs),
 		ftsDB:    fdb,
 		scanning: false,
 	}
-	tfts.dirsWatcher = notifywatch.NewNotifyWatchDirs(dirs, tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove}...)
+	tfts.dirsWatcher = notifywatch.NewNotifyWatchDirs(dirs, tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove}...) // TODO: (maybe) add way to override/config event types?
 	// defer tfts.ftsDB.Close() // this only closes the DB after this object is GC'd?
-	return tfts, nil
+	return tfts, err // always return a valid watcher instance, we can add dirs and use other features later
+}
+
+// AddDirWatch adds a dir and starts watching it
+// returns error if dir doesn't exist or is already watched
+// make sure to suffix dir with "/*" for recursive watching
+func (tfts *TreeStatsWatcher) AddDirWatch(dir string) error {
+	if _, err := os.Lstat(dir); err != nil {
+		return err
+	}
+	if gogenutils.InSlice(dir, tfts.dirs) {
+		return fmt.Errorf("%s already in watched dirs (%v), refusing to add", dir, tfts.dirs)
+	}
+	return tfts.dirsWatcher.AddWatcher(dir, tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove})
+}
+
+func (tfts *TreeStatsWatcher) RemoveDirWatch(dir string) error { // TODO: implement
+	return nil
 }
 
 // Watch all registered dirs with the notify watcher
@@ -57,7 +72,7 @@ func (tfts *TreeStatsWatcher) Watch() error {
 func (tfts *TreeStatsWatcher) ScanSync() error {
 	tfts.scanning = true
 	tfts.lastScanStarted = time.Now()
-	var errl []string
+	errl := []string{}
 	for _, d := range tfts.dirs {
 		if err := tfts.scanDir(d); err != nil {
 			errl = append(errl, fmt.Sprintf("error [%s]: %s", d, err.Error()))
