@@ -170,6 +170,7 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 		return err
 	}
 	// upsert file type stats for dir
+	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
 
 	if _, err := f.DB.Exec((fmt.Sprintf(
 		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, %d, %d) 
@@ -192,9 +193,11 @@ func (f *FileTypeStatsDB) DeleteOlderThan(t time.Time) error {
 // DeleteFileStats deletes the file/dir in path, if it's a dir, the delete is recursive
 func (f *FileTypeStatsDB) DeleteFileStats(path string) error {
 	// if we delete "<path>/*" OR "<path>" from the DB, we catch automatically the recursife case if it was a dir and existed, otherwise we delete just the file
+	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
+
 	if _, err := f.DB.Exec((fmt.Sprintf(
 		`DELETE FROM fileinfo WHERE 
-			fileinfo.path GLOB "%s/*" OR fileinfo.path="%s"`, path, path))); err != nil {
+			fileinfo.path GLOB '%s/*' OR fileinfo.path='%s'`, path, path))); err != nil {
 		return err
 	}
 	return nil
@@ -202,6 +205,7 @@ func (f *FileTypeStatsDB) DeleteFileStats(path string) error {
 
 // returns table.id where field==value, inserts value if not exist (id must be AUTOINCREMENT)
 func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error) {
+	value = strings.Replace(value, "'", "''", -1) // escape single quotes for SQL
 	var id int
 	rs, err := f.DB.Query(fmt.Sprintf("SELECT id FROM %s WHERE %s='%s'", table, field, value))
 	if err != nil {
@@ -230,6 +234,7 @@ func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error)
 func (f *FileTypeStatsDB) dirsWherePredicate(dirs []string) string {
 	pred := make([]string, len(dirs))
 	for i, d := range dirs {
+		d = strings.Replace(d, "'", "''", -1) // escape single quotes for SQL
 		if strings.HasSuffix(d, "*/*") || strings.HasSuffix(d, "/*") {
 			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s')", d)
 		} else if strings.HasSuffix(d, "*") || strings.HasSuffix(d, "*/") {
