@@ -121,44 +121,46 @@ func (f *FileTypeStatsDB) createTables() error {
 
 // FTStatsDirs returns the FileTypeStats per dir
 // call with dir="/my/dir/*" to get the recursive totals under that dir
-func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeDirStats, error) {
+func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeStats, error) {
 	// TODO: maybe nicer solution to get the "top level" path for each listed category?
 	wp := f.dirsWherePredicate(dirs)
 	rs, err := f.DB.Query(fmt.Sprintf(
-		`SELECT fileinfo.path, cats.filecat, COUNT(fileinfo.path) AS fcatcount, SUM(fileinfo.size) AS fcatsize FROM fileinfo, cats
+		`SELECT cats.filecat AS fcat, fileinfo.path, COUNT(fileinfo.path) AS fcatcount, SUM(fileinfo.size) AS fcatsize FROM fileinfo, cats
 			WHERE fileinfo.catid=cats.id AND (%s)
 			GROUP BY cats.filecat
-			ORDER BY fileinfo.path`, wp))
+		 UNION ALL
+		 SELECT 'total', '', COUNT(fileinfo.path), SUM(fileinfo.size) FROM cats, fileinfo
+		 	WHERE fileinfo.catid=cats.id AND (cats.filecat IS NOT 'dir') AND (%s)
+		 ORDER BY fileinfo.path
+			`, wp, wp))
 	if err != nil {
 		return nil, err
 	}
 	defer rs.Close()
 
 	var (
-		dir       string
 		path      string
-		filecat   string
+		fcat      string
 		fcatcount uint
 		fcatsize  uint64
-		fdstats   = make(types.FileTypeDirStats)
 	)
+	ftstats := make(types.FileTypeStats)
+
 	for rs.Next() {
-		if err := rs.Scan(&path, &filecat, &fcatcount, &fcatsize); err != nil {
+		if err := rs.Scan(&fcat, &path, &fcatcount, &fcatsize); err != nil {
 			return nil, err
 		}
-		if strings.HasSuffix(path, "/") { // since we order by path, we can be sure that the first "new" path will be assigned to dir before categories
-			dir = path // TODO (maybe): get the query result to list only the dir also for other file categories
-			// now the returned dir path is inaccurate if more than 1 dirs are scanned
+		if len(dirs) == 1 { // the query has specified a single directory pattern, so we use it for the path
+			if fcatcount == 1 && fcat != "total" { // there's only one, so we can take the exact path, except for totals take the input path
+				ftstats[fcat] = &types.FTypeStat{Path: path, FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
+			} else { // use input pattern for path
+				ftstats[fcat] = &types.FTypeStat{Path: dirs[0], FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
+			}
+		} else {
+			ftstats[fcat] = &types.FTypeStat{Path: "*", FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
 		}
-		if fdstats[dir] == nil {
-			ftstats := make(types.FileTypeStats)
-			fdstats[dir] = &types.FTypeDirStat{FTypeStats: ftstats, TotCount: 0, TotSize: 0}
-		}
-		fdstats[dir].FTypeStats[filecat] = &types.FTypeStat{FileCount: fcatcount, NumBytes: fcatsize}
-		fdstats[dir].TotCount += fcatcount // TODO: summing outside of query is a bit of an anti-pattern? Move into separate query?
-		fdstats[dir].TotSize += fcatsize
 	}
-	return fdstats, nil
+	return ftstats, nil
 }
 
 // UpdateFileStats upserts the file in path with size
