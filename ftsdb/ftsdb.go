@@ -124,6 +124,7 @@ func (f *FileTypeStatsDB) createTables() error {
 func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeStats, error) {
 	// TODO: maybe nicer solution to get the "top level" path for each listed category?
 	wp := f.dirsWherePredicate(dirs)
+	ftstats := make(types.FileTypeStats)
 	rs, err := f.DB.Query(fmt.Sprintf(
 		`SELECT cats.filecat AS fcat, fileinfo.path, COUNT(fileinfo.path) AS fcatcount, SUM(fileinfo.size) AS fcatsize FROM fileinfo, cats
 			WHERE fileinfo.catid=cats.id AND (%s)
@@ -134,7 +135,7 @@ func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeStats, error
 		 ORDER BY fileinfo.path
 			`, wp, wp))
 	if err != nil {
-		return nil, err
+		return ftstats, err
 	}
 	defer rs.Close()
 
@@ -144,11 +145,10 @@ func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeStats, error
 		fcatcount uint
 		fcatsize  uint64
 	)
-	ftstats := make(types.FileTypeStats)
 
 	for rs.Next() {
 		if err := rs.Scan(&fcat, &path, &fcatcount, &fcatsize); err != nil {
-			return nil, err
+			return ftstats, err
 		}
 		if len(dirs) == 1 { // the query has specified a single directory pattern, so we use it for the path
 			if fcatcount == 1 && fcat != "total" { // there's only one, so we can take the exact path, except for totals take the input path
