@@ -9,6 +9,7 @@ import (
 
 	"github.com/ppenguin/filetypestats"
 	"github.com/ppenguin/filetypestats/ftsdb"
+	"github.com/ppenguin/filetypestats/treestatsquery"
 	"github.com/ppenguin/filetypestats/types"
 	utils "github.com/ppenguin/gogenutils"
 )
@@ -32,10 +33,10 @@ func main() {
 			os.Remove(*dbfile)
 		}
 		scan(scandirs, *dbfile)
-	// case "show":
-	// 	show(scandirs, *dbfile)
+	case "show":
+		show(scandirs, *dbfile)
 	case "dump":
-		dump(scandirs, *dbfile)
+		summary(scandirs, *dbfile)
 	case "watch":
 		watch(scandirs, *dbfile)
 	default:
@@ -49,7 +50,7 @@ func usage() {
 			"\tscan: scans all dirs given recursively and stores statistics per dir in scandb\n"+
 			"\tshow: gets the totals from scandb for the given dirs.\n"+
 			"\t\tTo show totals under a dir, use the special form --dir='/dir/to/*' (remember quoting if necessary)\n"+
-			"\tdump: dumps all selected dirs with their stats\n"+
+			"\tsummary: show sum totals for all selected dirs\n"+
 			"\twatch: watch selected dirs for modification (blocking)\n\nFlags:\n", os.Args[0])
 	flag.PrintDefaults()
 	os.Exit(0)
@@ -72,36 +73,37 @@ func scan(dirs []string, file string) {
 	}
 }
 
-// func show(dirs []string, file string) {
-// 	db, err := ftsdb.New(file, false)
-// 	if err != nil {
-// 		exiterr(err)
-// 	}
-// 	defer db.Close()
-// 	ts := time.Now()
-// 	fstats, err := db.FTStatsDirsSum(dirs)
-// 	if err != nil {
-// 		exiterr(err)
-// 	}
-// 	fmt.Printf("Query took %s\n\n", time.Since(ts))
-// 	fmt.Println("Query totals:")
-// 	printstats(fstats)
-// }
+func show(dirs []string, file string) {
+	ts := time.Now()
 
-func dump(dirs []string, file string) {
-	db, err := ftsdb.New(file, false)
-	if err != nil {
+	var err error
+	var fdb *ftsdb.FileTypeStatsDB
+
+	if fdb, err = ftsdb.New(file, false); err != nil {
 		exiterr(err)
 	}
-	defer db.Close()
+	defer fdb.Close()
+
+	for _, d := range dirs {
+		fstats, err := fdb.FTStatsDirs(dirs)
+		if err != nil {
+			exiterr(err)
+		}
+
+		fmt.Printf("%s: query took %s\n\n", d, time.Since(ts))
+		printstats(fstats)
+	}
+}
+
+func summary(dirs []string, file string) {
 	ts := time.Now()
-	fdstats, err := db.FTStatsDirs(dirs)
+	fstats, err := treestatsquery.FTStatsDirs(file, dirs)
 	if err != nil {
 		exiterr(err)
 	}
 	fmt.Printf("Query took %s\n\n", time.Since(ts))
 	fmt.Println("Query totals:")
-	printdirstats(fdstats)
+	printstats(fstats)
 }
 
 func watch(dirs []string, file string) {
@@ -114,23 +116,9 @@ func watch(dirs []string, file string) {
 	fts.Watch()
 }
 
-func printstats(fstats types.FileTypeStats) {
-	totCount := uint(0)
-	totSize := uint64(0)
-	for k, v := range fstats {
-		fmt.Printf("%d %s files taking %s of space\n", v.FileCount, k, utils.ByteCountSI(v.NumBytes))
-		totCount += v.FileCount
-		totSize += v.NumBytes
-	}
-	fmt.Printf("\nTotal %d files taking %s of space\n", totCount, utils.ByteCountSI(totSize))
-}
-
-func printdirstats(fdstats types.FileTypeDirStats) {
-	for dir, data := range fdstats {
-		catstats := ""
-		for k, v := range data.FTypeStats {
-			catstats += fmt.Sprintf("| %5d x %12s (%8s) ", v.FileCount, k, utils.ByteCountSI(v.NumBytes))
-		}
-		fmt.Printf("%80s: \ttotal %6d (%8s) \t%s\n", dir, data.TotCount, utils.ByteCountSI(data.TotSize), catstats)
+func printstats(ftstats types.FileTypeStats) {
+	fmt.Printf("%10s: \t%30s %8s \t%5s\n%75s\n", "Type", "Path", "Size", "Count", strings.Repeat("-", 75))
+	for _, catstat := range ftstats {
+		fmt.Printf("%10s: \t%30s (%8s) \t%5d files\n", catstat.FType, catstat.Path, utils.ByteCountSI(catstat.NumBytes), catstat.FileCount)
 	}
 }

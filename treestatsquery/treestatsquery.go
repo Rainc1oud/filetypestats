@@ -11,12 +11,12 @@ import (
 
 // FTStatsDirs returns the FileTypeStats per dir
 // call with dir="/my/dir/*" to get the recursive totals under that dir, or set recursive=true
-func FTStatsDirs(dbfile string, dirs []string) (types.FileTypeDirStats, error) {
+func FTStatsDirs(dbfile string, dirs []string) (types.FileTypeStats, error) {
 	var err error
 	var fdb *ftsdb.FileTypeStatsDB
 
 	if fdb, err = ftsdb.New(dbfile, false); err != nil {
-		return types.FileTypeDirStats{}, err
+		return types.FileTypeStats{}, err
 	}
 	defer fdb.Close()
 

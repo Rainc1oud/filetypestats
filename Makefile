@@ -15,7 +15,7 @@ IMGNAME = rcbuild-go:1.16.8-$(CMARCH)
 DOCKERPULL = $(DOCKEREXE) pull --tls-verify=false docker://1nnoserv:15000/xbuildenv/$(IMGNAME)
 
 # std Makefile stuff
-GOSRC := $(wildcard *.go types/*.go ftsdb/*.go internal/cmd/testcli/*.go)
+GOSRC := $(wildcard *.go types/*.go ftsdb/*.go treestatsquery/*.go internal/cmd/testcli/*.go)
 $(info GOSRC: $(GOSRC))
 
 .PHONY: all
@@ -32,13 +32,13 @@ test:
 
 .PHONY: testcli
 testcli: build/$(BPFX)/testcli
-build/linux-amd64/testcli: internal/cmd/testcli/testcli.go
-	$(GOENV) go build -v -o $@ $^
-build/linux-arm/testcli: internal/cmd/testcli/testcli.go
+build/linux-amd64/testcli: internal/cmd/testcli/testcli.go $(GOSRC)
+	$(GOENV) go build -v -o $@ $<
+build/linux-arm/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/testcli.go $(GOSRC)
 	$(DOCKERPULL)
 	[[ -d "$(CURDIR)/build" ]] || mkdir -p "$(CURDIR)/build"
-	$(DOCKEREXE) run --rm -v $(CURDIR):/buildroot -v $(CURDIR)/build:/build/ $(IMGNAME) bash -c '. /etc/environment; cd /buildroot; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $^'
-build/linux-arm64/testcli: internal/cmd/testcli/testcli.go
+	$(DOCKEREXE) run --rm -v $(CURDIR):/buildroot -v $(CURDIR)/build:/build/ $(IMGNAME) bash -c '. /etc/environment; cd /buildroot; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
+build/linux-arm64/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/testcli.go $(GOSRC)
 	$(DOCKERPULL)
 	[[ -d "$(CURDIR)/build" ]] || mkdir -p "$(CURDIR)/build"
-	$(DOCKEREXE) run --rm -v $(CURDIR):/buildroot -v $(CURDIR)/build:/build/ $(IMGNAME) bash -c '. /etc/environment; cd /buildroot; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $^'
+	$(DOCKEREXE) run --rm -v $(CURDIR):/buildroot -v $(CURDIR)/build:/build/ $(IMGNAME) bash -c '. /etc/environment; cd /buildroot; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
