@@ -3,10 +3,10 @@ package notifywatch
 import (
 	"fmt"
 	"log"
-	"path/filepath"
 	"strings"
 	"sync"
 
+	utils "github.com/ppenguin/filetypestats/utils"
 	"github.com/ppenguin/gogenutils"
 	"github.com/rjeczalik/notify"
 )
@@ -31,29 +31,51 @@ func NewNotifyWatchDirs(rootdirs []string, handler NotifyHandlerFun, events ...n
 	}
 	rdirs := gogenutils.FilterCommonRootDirs(rootdirs) // sanitise to only include disjoint roots
 	for _, d := range rdirs {
-		addWatcher(nwd, d, handler, events)
+		nwd.AddWatcher(d, handler, events)
 	}
 	return nwd
 }
 
-func addWatcher(nwd *NotifyWatchDirs, dir string, handler NotifyHandlerFun, events []notify.Event) error {
-	return nwd.AddWatcher(dir, handler, events)
+func (nwd *NotifyWatchDirs) startWatcher(dir string) {
+	w := nwd.getWatcher(dir)
+	if !w.watching { // avoid starting a watcher that is already watching
+		nwd.wg.Add(1)
+		go func(wg *sync.WaitGroup, watcher *NotifyWatcher) {
+			_ = watcher.Watch() // TODO: error handling?
+			wg.Done()
+		}(nwd.wg, w)
+	}
 }
+
 func (nwd *NotifyWatchDirs) AddWatcher(dir string, handler NotifyHandlerFun, events []notify.Event) error {
 	nwd.watchers[dir] = NewNotifyWatcher(dir, handler, events...)
-	return nil
+	nwd.startWatcher(dir)
+	return nil // TODO: error handling (?) async => how?
+}
+
+func (nwd *NotifyWatchDirs) RemoveWatcher(dir string) error {
+	w, ok := nwd.watchers[dir]
+	if !ok {
+		return nil // ignore non-existing
+	}
+	err := w.Stop()
+	nwd.watchers[dir] = nil
+	return err
+}
+
+func (nwd *NotifyWatchDirs) getWatcher(dir string) *NotifyWatcher {
+	v, ok := nwd.watchers[dir]
+	if !ok {
+		return &NotifyWatcher{watchdir: "", eventInfo: make(chan notify.EventInfo, 1)} // what happens down the line if we try to use an empty watcher?
+	}
+	return v
 }
 
 // WatchAll (blocking) starts watching (all watchers) and exits after the last watcher is terminated
 func (nwd *NotifyWatchDirs) WatchAll() error {
 	errl := []string{}
 	for _, w := range nwd.watchers {
-		nwd.wg.Add(1)
-		go func(wg *sync.WaitGroup, watcher *NotifyWatcher) {
-			err := watcher.Watch()
-			errl = append(errl, err.Error())
-			wg.Done()
-		}(nwd.wg, w)
+		nwd.startWatcher(w.watchdir) // automatically ignores already running watchers
 	}
 	nwd.wg.Wait()
 	if len(errl) > 0 {
@@ -65,8 +87,10 @@ func (nwd *NotifyWatchDirs) WatchAll() error {
 func (nwd *NotifyWatchDirs) StopAll() error {
 	errl := []string{}
 	for _, w := range nwd.watchers {
-		if err := w.Stop(); err != nil {
-			errl = append(errl, err.Error())
+		if w.watching {
+			if err := w.Stop(); err != nil {
+				errl = append(errl, err.Error())
+			}
 		}
 	}
 	if len(errl) > 0 {
@@ -79,6 +103,7 @@ func (nwd *NotifyWatchDirs) StopAll() error {
 
 type NotifyWatcher struct {
 	watchdir  string
+	watching  bool
 	eventInfo chan notify.EventInfo
 	events    []notify.Event
 	handler   NotifyHandlerFun
@@ -88,21 +113,27 @@ type NotifyWatcher struct {
 // a dir ending in "/*" will result in a recursive watch
 func NewNotifyWatcher(dir string, handler NotifyHandlerFun, events ...notify.Event) *NotifyWatcher {
 	wdir := dir
-	if strings.HasSuffix(dir, "/*") { // TODO: this will not work on windows
-		wdir = filepath.Join(strings.TrimSuffix(dir, "/*"), "...")
+	if utils.IsDirRecursive(dir) {
+		wdir = utils.Dir3Dot(dir)
 	}
 	nw := &NotifyWatcher{
 		eventInfo: make(chan notify.EventInfo, 1), // buffered to ensure no events are dropped
 		events:    events,
 		watchdir:  wdir,
+		watching:  false,
 		handler:   handler,
 	}
 	return nw
 }
 
 func (nw *NotifyWatcher) Watch() error {
+	if nw.watchdir == "" {
+		return fmt.Errorf("ERROR: refusing to start empty watcher")
+	}
+	nw.watching = true
 	if err := notify.Watch(nw.watchdir, nw.eventInfo, nw.events...); err != nil {
 		// log.Printf("error: %s", err.Error())
+		nw.watching = false
 		return err
 	}
 	defer notify.Stop(nw.eventInfo)
@@ -118,6 +149,7 @@ func (nw *NotifyWatcher) Watch() error {
 			break
 		}
 	}
+	nw.watching = false
 	return nil
 }
 
@@ -126,5 +158,6 @@ func (nw *NotifyWatcher) Stop() error {
 		return fmt.Errorf("channel nw.EventInfo already closed")
 	}
 	close(nw.eventInfo) // can we do this? we probably need to be careful in the watch loop?
+	nw.watching = false
 	return nil
 }
