@@ -7,38 +7,36 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/karrick/godirwalk"
 	"github.com/ppenguin/filetype"
 	"github.com/ppenguin/filetypestats/ftsdb"
 	"github.com/ppenguin/filetypestats/notifywatch"
-	"github.com/ppenguin/gogenutils"
+	"github.com/ppenguin/filetypestats/types"
+	"github.com/ppenguin/filetypestats/utils"
+	ggu "github.com/ppenguin/gogenutils"
 	"github.com/rjeczalik/notify"
 )
 
 type TreeStatsWatcher struct {
-	dirs            []string // not strictly necessary (because also held in child objects), but a convenience to check dirs later
-	dirsWatcher     *notifywatch.NotifyWatchDirs
-	ftsDB           *ftsdb.FileTypeStatsDB
-	scanning        bool
-	lastScanStarted time.Time
+	dirsWatcher *notifywatch.NotifyWatchDirs
+	ftsDB       *ftsdb.FileTypeStatsDB
+	dirsStatus  *types.TDirsStatus
 }
 
 // NewTreeStatsWatcher is the top level constructor featuring:
 //  - a recursive watcher and scanner for all files in the given param dirs
 //	- a sqlite DB session (param database: file name)
+// An instance is always returned, even if an error occurred
+// dirs will be trimmed of trailing suffixes and evaluated recursively
 func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, error) {
 	var fdb *ftsdb.FileTypeStatsDB
 	var err error
-
 	fdb, err = ftsdb.New(database, true)
-	tfts := &TreeStatsWatcher{
-		dirs:     gogenutils.FilterCommonRootDirs(dirs),
-		ftsDB:    fdb,
-		scanning: false,
-	}
-	tfts.dirsWatcher = notifywatch.NewNotifyWatchDirs(dirs, tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove}...) // TODO: (maybe) add way to override/config event types?
+	tfts := new(TreeStatsWatcher)
+	tfts.ftsDB = fdb
+	tfts.dirsStatus = types.NewDirsStatus(ggu.FilterCommonRootDirs(utils.StringSliceApply(dirs, utils.JustDir))...)                                                                                     // init queue with all dirs
+	tfts.dirsWatcher = notifywatch.NewNotifyWatchDirs(utils.StringSliceApply(tfts.dirsStatus.Dirs(), utils.DirStar), tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove}...) // TODO: (maybe) add way to override/config event types?
 	// defer tfts.ftsDB.Close() // this only closes the DB after this object is GC'd?
 	return tfts, err // always return a valid watcher instance, we can add dirs and use other features later
 }
@@ -47,17 +45,23 @@ func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, err
 // returns error if dir doesn't exist or is already watched
 // make sure to suffix dir with "/*" for recursive watching
 func (tfts *TreeStatsWatcher) AddDirWatch(dir string) error {
-	if _, err := os.Lstat(dir); err != nil {
+	if _, err := os.Lstat(utils.JustDir(dir)); err != nil {
 		return err
 	}
-	if gogenutils.InSlice(dir, tfts.dirs) {
-		return fmt.Errorf("%s already in watched dirs (%v), refusing to add", dir, tfts.dirs)
+	if tfts.dirsStatus.Contains(utils.JustDir(dir)) { // ignore suffixes indicating recursive watch
+		return fmt.Errorf("%s already in watched dirs (%v), refusing to add", dir, tfts.dirsStatus.Dirs())
 	}
-	return tfts.dirsWatcher.AddWatcher(dir, tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove})
+	tfts.dirsStatus.AddDir(utils.JustDir(dir))
+	if err := tfts.dirsWatcher.AddWatcher(utils.DirStar(dir), tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove}); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (tfts *TreeStatsWatcher) RemoveDirWatch(dir string) error { // TODO: implement
-	return nil
+func (tfts *TreeStatsWatcher) RemoveDirWatch(dir string) error {
+	tfts.dirsStatus.RemoveDir(utils.JustDir(dir))
+	tfts.ftsDB.DeleteFileStats(utils.JustDir(dir)) // we explicitly clean the database from dirs that we stop watching
+	return tfts.dirsWatcher.RemoveWatcher(utils.DirStar(dir))
 }
 
 // Watch all registered dirs with the notify watcher
@@ -67,20 +71,16 @@ func (tfts *TreeStatsWatcher) Watch() error {
 	return err
 }
 
-// ScanFullSync does a full scan over all registered dirs synchronously and updates the database
+// ScanSync does a full scan over all registered dirs synchronously and updates the database
 // This can take a long time (minutes to hours) to complete
 func (tfts *TreeStatsWatcher) ScanSync() error {
-	tfts.scanning = true
-	tfts.lastScanStarted = time.Now()
 	errl := []string{}
-	for _, d := range tfts.dirs {
-		if err := tfts.scanDir(d); err != nil {
+	for _, d := range tfts.dirsStatus.Dirs() {
+		if err := tfts.ScanDir(d); err != nil {
 			errl = append(errl, fmt.Sprintf("error [%s]: %s", d, err.Error()))
 		}
 	}
-
-	tfts.ftsDB.DeleteOlderThan(tfts.lastScanStarted) // delete all entries from before the scan (i.e. not updated during the scan, because this means they were deleted)
-	tfts.scanning = false
+	// tfts.ftsDB.DeleteOlderThan(tfts.lastScanStarted) // delete all entries from before the scan (i.e. not updated during the scan, because this means they were deleted)
 
 	if len(errl) > 0 {
 		return fmt.Errorf(strings.Join(errl, "\n"))
@@ -90,9 +90,15 @@ func (tfts *TreeStatsWatcher) ScanSync() error {
 
 // scanDir scans the given scanRoot recursively and updates the database
 // This can take a long time (minutes to hours) to complete
-func (tfts *TreeStatsWatcher) scanDir(scanRoot string) error {
+func (tfts *TreeStatsWatcher) ScanDir(scanRoot string) error {
 
-	if err := godirwalk.Walk(scanRoot, &godirwalk.Options{
+	if tfts.dirsStatus.ScanRunning(scanRoot) {
+		return fmt.Errorf("warning: skipping scan of %s because it is already running", scanRoot)
+	}
+
+	tfts.dirsStatus.ScanStart(scanRoot)
+
+	err := godirwalk.Walk(scanRoot, &godirwalk.Options{
 		AllowNonDirectory: true,
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
 			var (
@@ -124,7 +130,12 @@ func (tfts *TreeStatsWatcher) scanDir(scanRoot string) error {
 			fmt.Fprintf(os.Stderr, "warning: %s reading %s\n", e.Error(), s)
 			return godirwalk.SkipNode
 		},
-	}); err != nil {
+	})
+
+	tfts.ftsDB.DeleteOlderThanWithPrefix(tfts.dirsStatus.ScanStarted(scanRoot), scanRoot)
+	tfts.dirsStatus.ScanFinish(scanRoot)
+
+	if err != nil {
 		return err
 	}
 	return nil

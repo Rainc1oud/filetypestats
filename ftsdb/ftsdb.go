@@ -122,7 +122,6 @@ func (f *FileTypeStatsDB) createTables() error {
 // FTStatsDirs returns the FileTypeStats per dir
 // call with dir="/my/dir/*" to get the recursive totals under that dir
 func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeStats, error) {
-	// TODO: maybe nicer solution to get the "top level" path for each listed category?
 	wp := f.dirsWherePredicate(dirs)
 	ftstats := make(types.FileTypeStats)
 	rs, err := f.DB.Query(fmt.Sprintf(
@@ -185,6 +184,17 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 func (f *FileTypeStatsDB) DeleteOlderThan(t time.Time) error {
 	if _, err := f.DB.Exec((fmt.Sprintf(
 		`DELETE FROM fileinfo WHERE fileinfo.updated < %d`, t.Unix()))); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteOlderThanWithPrefix deletes all entries older than (i.e. not updated after) t
+func (f *FileTypeStatsDB) DeleteOlderThanWithPrefix(t time.Time, prefix string) error {
+	if _, err := f.DB.Exec((fmt.Sprintf(
+		`DELETE FROM fileinfo 
+		WHERE fileinfo.updated < %d
+			AND (fileinfo.path GLOB '%s/*' OR fileinfo.path='%s')`, t.Unix(), prefix, prefix))); err != nil {
 		return err
 	}
 	return nil
