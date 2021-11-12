@@ -100,7 +100,7 @@ func (f *FileTypeStatsDB) createTables() error {
 	if _, err := f.DB.Exec(
 		`CREATE TABLE IF NOT EXISTS fileinfo (
 			path TEXT NOT NULL,
-			size UNSIGNED BIGINT,
+			size BIGINT,
 			catid INTEGER NOT NULL,
 			updated INTEGER,
 			PRIMARY KEY (path)
@@ -139,17 +139,28 @@ func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeStats, error
 	defer rs.Close()
 
 	var (
-		path      string
-		fcat      string
-		fcatcount uint
-		fcatsize  uint64
+		path       string
+		fcat       string
+		fcatcount  uint
+		fcatsize   uint64
+		pathN      sql.NullString
+		fcatN      sql.NullString
+		fcatcountN sql.NullInt32
+		fcatsizeN  sql.NullInt64
 	)
 
 	for rs.Next() {
-		if err := rs.Scan(&fcat, &path, &fcatcount, &fcatsize); err != nil {
+		if err := rs.Scan(&fcatN, &pathN, &fcatcountN, &fcatsizeN); err != nil {
 			return ftstats, err
 		}
-		if len(dirs) == 1 { // the query has specified a single directory pattern, so we use it for the path
+		if !(pathN.Valid && fcatN.Valid && fcatcountN.Valid && fcatsizeN.Valid) { // we had NULL values, just return empty result without error
+			return ftstats, nil
+		}
+		path = pathN.String
+		fcat = fcatN.String
+		fcatcount = uint(fcatcountN.Int32) // crappy that we don't have sql.NullUInt => will this be a problem???
+		fcatsize = uint64(fcatsizeN.Int64) // crappy that we don't have sql.NullUInt64 => will this be a problem???
+		if len(dirs) == 1 {                // the query has specified a single directory pattern, so we use it for the path
 			if fcatcount == 1 && fcat != "total" { // there's only one, so we can take the exact path, except for totals take the input path
 				ftstats[fcat] = &types.FTypeStat{Path: path, FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
 			} else { // use input pattern for path
