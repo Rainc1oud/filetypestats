@@ -6,22 +6,19 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"strings"
+	"sync"
 
 	"github.com/karrick/godirwalk"
 	"github.com/ppenguin/filetype"
 	"github.com/ppenguin/filetypestats/ftsdb"
-	"github.com/ppenguin/filetypestats/notifywatch"
-	"github.com/ppenguin/filetypestats/types"
-	"github.com/ppenguin/filetypestats/utils"
 	ggu "github.com/ppenguin/gogenutils"
 	"github.com/rjeczalik/notify"
 )
 
 type TreeStatsWatcher struct {
-	dirsWatcher *notifywatch.NotifyWatchDirs
-	ftsDB       *ftsdb.FileTypeStatsDB
-	dirsStatus  *types.TDirsStatus
+	TDirMonitors // embed this map, because a TreeStatsWatcher is just TDirMonitors with added state
+	ftsDB        *ftsdb.FileTypeStatsDB
+	wg           *sync.WaitGroup
 }
 
 // NewTreeStatsWatcher is the top level constructor featuring:
@@ -29,76 +26,88 @@ type TreeStatsWatcher struct {
 //	- a sqlite DB session (param database: file name)
 // An instance is always returned, even if an error occurred
 // dirs will be trimmed of trailing suffixes and evaluated recursively
+// If dirs is empty, you can add watches later with AddWatch() or AddDir()
 func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, error) {
 	var fdb *ftsdb.FileTypeStatsDB
 	var err error
 	fdb, err = ftsdb.New(database, true)
-	tfts := new(TreeStatsWatcher)
-	tfts.ftsDB = fdb
-	tfts.dirsStatus = types.NewDirsStatus(ggu.FilterCommonRootDirs(utils.StringSliceApply(dirs, utils.JustDir))...)                                                                                     // init queue with all dirs
-	tfts.dirsWatcher = notifywatch.NewNotifyWatchDirs(utils.StringSliceApply(tfts.dirsStatus.Dirs(), utils.DirStar), tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove}...) // TODO: (maybe) add way to override/config event types?
-	// defer tfts.ftsDB.Close() // this only closes the DB after this object is GC'd?
-	return tfts, err // always return a valid watcher instance, we can add dirs and use other features later
+	tsw := &TreeStatsWatcher{
+		*NewDirMonitors(),
+		fdb,
+		&sync.WaitGroup{},
+	}
+	for _, d := range dirs {
+		tsw.AddWatch(d)
+	}
+	return tsw, err // always return a valid watcher instance, we can add dirs and use other features later
 }
 
-// AddDirWatch adds a dir and starts watching it
-// returns error if dir doesn't exist or is already watched
-// make sure to suffix dir with "/*" for recursive watching
-func (tfts *TreeStatsWatcher) AddDirWatch(dir string) error {
-	if _, err := os.Lstat(utils.JustDir(dir)); err != nil {
-		return err
+// AddWatch adds a (default) watch for the given dirs
+// Default means: recursive and for events notify.Create, notify.Write, notify.Remove
+// For a customised watch, use AddDir()
+func (tsw *TreeStatsWatcher) AddWatch(dirs ...string) error {
+	errs := ggu.NewErrors()
+	for _, d := range dirs {
+		tsw.AddDir(d, true, tsw.onFileChanged, notify.Create, notify.Write, notify.Remove) // TBC: do we need to make this configurable on a higher level?
+		errs.AddIf(tsw.ScanDirAsync(d))
 	}
-	if tfts.dirsStatus.Contains(utils.JustDir(dir)) { // ignore suffixes indicating recursive watch
-		return fmt.Errorf("%s already in watched dirs (%v), refusing to add", dir, tfts.dirsStatus.Dirs())
-	}
-	tfts.dirsStatus.AddDir(utils.JustDir(dir))
-	if err := tfts.dirsWatcher.AddWatcher(utils.DirStar(dir), tfts.onFileChanged, []notify.Event{notify.Create, notify.Write, notify.Remove}); err != nil {
-		return err
-	}
-	return nil
+	return errs.Err()
 }
 
-func (tfts *TreeStatsWatcher) RemoveDirWatch(dir string) error {
-	tfts.dirsStatus.RemoveDir(utils.JustDir(dir))
-	tfts.ftsDB.DeleteFileStats(utils.JustDir(dir)) // we explicitly clean the database from dirs that we stop watching
-	return tfts.dirsWatcher.RemoveWatcher(utils.DirStar(dir))
+// WatchAll starts all registered dirs with the notify watcher (ignoring already started ones)
+func (tsw *TreeStatsWatcher) WatchAll() error {
+	errs := ggu.NewErrors()
+	for _, d := range tsw.Dirs() {
+		errs.AddIf(tsw.StartWatcher(d))
+	}
+	return errs.Err()
 }
 
-// Watch all registered dirs with the notify watcher
-func (tfts *TreeStatsWatcher) Watch() error {
-	err := tfts.dirsWatcher.WatchAll()
-	tfts.ftsDB.Close() // TODO: close DB after all watchers finished... probably opening/closing should be one level deeper?
-	return err
+// StopAll stops all registered dirs with the notify watcher
+func (tsw *TreeStatsWatcher) StopWatchAll() error {
+	errs := ggu.NewErrors()
+	for _, v := range tsw.TDirMonitors {
+		errs.AddIf(v.Stop())
+	}
+	return errs.Err()
 }
 
 // ScanSync does a full scan over all registered dirs synchronously and updates the database
 // This can take a long time (minutes to hours) to complete
-func (tfts *TreeStatsWatcher) ScanSync() error {
-	errl := []string{}
-	for _, d := range tfts.dirsStatus.Dirs() {
-		if err := tfts.ScanDir(d); err != nil {
-			errl = append(errl, fmt.Sprintf("error [%s]: %s", d, err.Error()))
+func (tsw *TreeStatsWatcher) ScanAllSync() error {
+	errs := ggu.NewErrors()
+	for _, d := range tsw.Dirs() {
+		if err := tsw.ScanDir(d); err != nil {
+			errs.AddIf(fmt.Errorf("error [%s]: %s", d, err.Error()))
 		}
 	}
-	// tfts.ftsDB.DeleteOlderThan(tfts.lastScanStarted) // delete all entries from before the scan (i.e. not updated during the scan, because this means they were deleted)
+	// tsw.ftsDB.DeleteOlderThan(tsw.lastScanStarted) // delete all entries from before the scan (i.e. not updated during the scan, because this means they were deleted)
+	return errs.Err()
+}
 
-	if len(errl) > 0 {
-		return fmt.Errorf(strings.Join(errl, "\n"))
+// ScanDirAsync scans dir asynchronously
+// TODO: add channel to make interuption possible?
+func (tsw *TreeStatsWatcher) ScanDirAsync(dir string) error {
+	if tsw.ScanRunning(dir) {
+		return fmt.Errorf("warning: skipping scan of %s because it is already running", dir)
 	}
+	go func() {
+		tsw.ScanDir(dir)
+	}()
 	return nil
 }
 
-// scanDir scans the given scanRoot recursively and updates the database
+// scanDir scans the given dir recursively and updates the database
 // This can take a long time (minutes to hours) to complete
-func (tfts *TreeStatsWatcher) ScanDir(scanRoot string) error {
+func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 
-	if tfts.dirsStatus.ScanRunning(scanRoot) {
-		return fmt.Errorf("warning: skipping scan of %s because it is already running", scanRoot)
+	if tsw.ScanRunning(dir) {
+		return fmt.Errorf("warning: skipping scan of %s because it is already running", dir)
 	}
 
-	tfts.dirsStatus.ScanStart(scanRoot)
+	tsw.ScanStart(dir)
 
-	err := godirwalk.Walk(scanRoot, &godirwalk.Options{
+	err := godirwalk.Walk(dir, &godirwalk.Options{
 		AllowNonDirectory: true,
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
 			var (
@@ -109,12 +118,12 @@ func (tfts *TreeStatsWatcher) ScanDir(scanRoot string) error {
 
 			if de.IsDir() {
 				ftype = "dir"
-				tfts.ftsDB.UpdateFileStats(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
+				tsw.ftsDB.UpdateFileStats(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						tfts.ftsDB.UpdateFileStats(osPathname, ftype, uint64(fi.Size()))
+						tsw.ftsDB.UpdateFileStats(osPathname, ftype, uint64(fi.Size()))
 						return nil
 					}
 				}
@@ -132,8 +141,8 @@ func (tfts *TreeStatsWatcher) ScanDir(scanRoot string) error {
 		},
 	})
 
-	tfts.ftsDB.DeleteOlderThanWithPrefix(tfts.dirsStatus.ScanStarted(scanRoot), scanRoot)
-	tfts.dirsStatus.ScanFinish(scanRoot)
+	tsw.ftsDB.DeleteOlderThanWithPrefix(tsw.ScanStarted(dir), dir)
+	tsw.ScanFinish(dir)
 
 	if err != nil {
 		return err
@@ -143,14 +152,45 @@ func (tfts *TreeStatsWatcher) ScanDir(scanRoot string) error {
 
 // onFileChanged is the inotify event handler passed to the notify watcher
 // for now we handle create, remove, write (this is like modify but guaranteed on all platforms)
-func (tfts *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
+func (tsw *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
 	switch (*eventInfo).Event() {
 	case notify.Create, notify.Write:
 		if fts, err := getFTStat((*eventInfo).Path()); err == nil {
-			return tfts.ftsDB.UpdateFileStats(fts.Path, fts.FType, fts.NumBytes)
+			return tsw.ftsDB.UpdateFileStats(fts.Path, fts.FType, fts.NumBytes)
 		} // any stat errors are simply ignored
 	case notify.Remove:
-		return tfts.ftsDB.DeleteFileStats((*eventInfo).Path()) // we can't know for sure whether it's a dir or regular file?
+		return tsw.ftsDB.DeleteFileStats((*eventInfo).Path()) // we can't know for sure whether it's a dir or regular file?
 	}
 	return fmt.Errorf("unhandled event %v for %s", eventInfo, (*eventInfo).Path())
+}
+
+// startDirWatch starts the dir watcher in the background (or returns an error if not available)
+func (tsw *TreeStatsWatcher) StartWatcher(dir string) error {
+	w, ok := tsw.TDirMonitors[dir]
+	if !ok {
+		return fmt.Errorf("refusing to start non-existing watcher for %s", dir)
+	}
+	if w.IsWatching() { // avoid starting a watcher that is already watching
+		return fmt.Errorf("refusing to start already running watcher for %s", dir)
+	}
+	tsw.wg.Add(1)
+	go func() { // we cat do without passing wg because it's a pointer we don't change?
+		_ = w.Watch() // TODO: error handling?
+		tsw.wg.Done()
+		delete(tsw.TDirMonitors, dir)
+	}()
+	return nil
+}
+
+// StopWatcher stops and removes the watcher for dir
+// (The DirMonitor s removed entirely, because we have no way to re-start a stopped watcher, so its existence becomes meaningless after stopping)
+func (tsw *TreeStatsWatcher) StopWatcher(dir string) error {
+	w, ok := tsw.TDirMonitors[dir]
+	if !ok {
+		return fmt.Errorf("refusing to stop non-existing watcher for %s", dir)
+	}
+	if !w.IsWatching() { // avoid starting a watcher that is already watching
+		return fmt.Errorf("refusing to stop already stopped watcher for %s", dir)
+	}
+	return tsw.RemoveDir(dir)
 }
