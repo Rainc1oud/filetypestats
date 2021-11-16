@@ -6,14 +6,14 @@ import (
 	"github.com/ppenguin/gogenutils"
 )
 
-// FTypeStat contains:
-//		either a summary for one filetype (Path is wildcard and FileCount >= 1)
-//		or the type and size of one file (Path is regular file and FileCount == 1)
-
 var (
+	// "const" string slice to enforce the field order for pretty printing
 	FTypeNames = func() []string { return []string{"dir", "audio", "application", "image", "other", "total"} }
 )
 
+// FTypeStat contains:
+//		either a summary for one filetype (Path is wildcard and FileCount >= 1)
+//		or the type and size of one file (Path is regular file and FileCount == 1)
 type FTypeStat struct {
 	Path      string
 	FType     string
