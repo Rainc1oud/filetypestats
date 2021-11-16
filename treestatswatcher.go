@@ -209,7 +209,7 @@ func (tsw *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
 	return fmt.Errorf("unhandled event %v for %s", eventInfo, (*eventInfo).Path())
 }
 
-// startDirWatch starts the dir watcher in the background (or returns an error if not available)
+// StartWatcher starts the dir watcher in the background (or returns an error if not available)
 func (tsw *TreeStatsWatcher) StartWatcher(dir string) error {
 	w, ok := tsw.TDirMonitors[dir]
 	if !ok {
