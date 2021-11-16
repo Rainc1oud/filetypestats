@@ -198,7 +198,7 @@ func (tsw *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
 			minfo.From = utils.DirTrailSep(minfo.From)
 			minfo.To = utils.DirTrailSep(minfo.To)
 		}
-		log.Printf("updating DB for file move %s -> %s", minfo.From, minfo.To)
+		log.Printf("updating DB for file move %s -> %s", minfo.From, minfo.To) // FIXME: uncontrolled logging
 		err = tsw.ftsDB.UpdateFilePath(minfo.From, minfo.To)
 		delete(tsw.moves, cookie)
 		return err
