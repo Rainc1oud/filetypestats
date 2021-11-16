@@ -61,16 +61,6 @@ func openDB(dbfile string, create bool) (*sql.DB, error) {
 	return db, nil
 }
 
-// NewNoOpen instantiates a FileTypeStatsDB object without opening the DB (but just checking existence of the file)
-// a *FileTypeStatsDB is always returned, since a non-existing DB may come into existence later
-// func NewNoOpen(file string) (*FileTypeStatsDB, error) {
-// 	var err error
-// 	ftdb := new(FileTypeStatsDB)
-// 	ftdb.fileName = file
-// 	_, err = os.Open(file)
-// 	return ftdb, err
-// }
-
 func (f *FileTypeStatsDB) Open() error {
 	var err error
 	if !f.IsOpened {
@@ -119,10 +109,16 @@ func (f *FileTypeStatsDB) createTables() error {
 	return nil
 }
 
-// FTStatsDirs returns the FileTypeStats per dir
-// call with dir="/my/dir/*" to get the recursive totals under that dir
-func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeStats, error) {
-	wp := f.dirsWherePredicate(dirs)
+// FTStatsSum returns the summary FileTypeStats for the given paths as a map of FTypeStat per File Type
+// Paths can be files or directories. The summary is counted like this for the respective path format
+// path="/my/dir/*" => count /my/dir/ and below recursively
+// path="/my/dir*/*" => count all dirs matching /my/dir*/ and below recursively
+// path="/my/dir/" => count ony the contents of /my/dir/
+// path="/my/dir*/" => count ony the contents of dirs matching /my/dir*/
+// path="/my/file" => count only "/my/file"
+// path="/my/file*" => count all files matching "/my/file*"
+func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error) {
+	wp := f.pathsWherePredicate(paths)
 	ftstats := make(types.FileTypeStats)
 	rs, err := f.DB.Query(fmt.Sprintf(
 		`SELECT cats.filecat AS fcat, fileinfo.path, COUNT(fileinfo.path) AS fcatcount, SUM(fileinfo.size) AS fcatsize FROM fileinfo, cats
@@ -160,11 +156,11 @@ func (f *FileTypeStatsDB) FTStatsDirs(dirs []string) (types.FileTypeStats, error
 		fcat = fcatN.String
 		fcatcount = uint(fcatcountN.Int32) // crappy that we don't have sql.NullUInt => will this be a problem???
 		fcatsize = uint64(fcatsizeN.Int64) // crappy that we don't have sql.NullUInt64 => will this be a problem???
-		if len(dirs) == 1 {                // the query has specified a single directory pattern, so we use it for the path
+		if len(paths) == 1 {               // the query has specified a single directory pattern, so we use it for the path
 			if fcatcount == 1 && fcat != "total" { // there's only one, so we can take the exact path, except for totals take the input path
 				ftstats[fcat] = &types.FTypeStat{Path: path, FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
 			} else { // use input pattern for path
-				ftstats[fcat] = &types.FTypeStat{Path: dirs[0], FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
+				ftstats[fcat] = &types.FTypeStat{Path: paths[0], FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
 			}
 		} else {
 			ftstats[fcat] = &types.FTypeStat{Path: "*", FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
@@ -186,6 +182,18 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, %d, %d) 
 			ON CONFLICT(path) DO 
 			UPDATE SET size=%d, catid=%d, updated=%d`, path, size, catid, time.Now().Unix(), size, catid, time.Now().Unix()))); err != nil {
+		return err
+	}
+	return nil
+}
+
+// UpdateFilePath updates the file path(s), which needs to happen on a file move
+// if path is a dir the update is recursive
+func (f *FileTypeStatsDB) UpdateFilePath(from, to string) error {
+	from = strings.Replace(from, "'", "''", -1) // escape single quotes for SQL
+	to = strings.Replace(to, "'", "''", -1)     // escape single quotes for SQL
+	if _, err := f.DB.Exec((fmt.Sprintf(
+		`UPDATE fileinfo SET path=REPLACE(path, '%s', '%s'), updated=%d;`, from, to, time.Now().Unix()))); err != nil {
 		return err
 	}
 	return nil
@@ -246,22 +254,18 @@ func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error)
 	return id, nil
 }
 
-// dirsWherePredicate returns the WHERE clause part selecting the dirs according to input dir list
-// we'll be using GLOB, so the following behaviour is "translated"
-// '/path/to/subdir' || '/path/to/subdir/' => GLOB '/path/to/subdir/*' AND NOT GLOB '/path/to/subdir/*/*' => this gives the totals of the FILES in '/path/to/subdir/'
-// '/path/to/subdir*' || '/path/to/subdir*/' => GLOB '/path/to/subdir*/*' AND NOT GLOB '/path/to/subdir*/*/*' => this gives the totals of the FILES in '/path/to/subdir*/'
-// '/path/to/subdir/*' => GLOB '/path/to/subdir/*' => this gives the totals of the FILES in '/path/to/subdir/' AND BELOW
-// '/path/to/subdir*/*' => GLOB '/path/to/subdir*/*' => this gives the totals of the FILES in '/path/to/subdir*/' AND BELOW
-func (f *FileTypeStatsDB) dirsWherePredicate(dirs []string) string {
-	pred := make([]string, len(dirs))
-	for i, d := range dirs {
-		d = strings.Replace(d, "'", "''", -1) // escape single quotes for SQL
-		if strings.HasSuffix(d, "*/*") || strings.HasSuffix(d, "/*") {
+// pathsWherePredicate returns the WHERE clause part selecting the paths according to input dir list
+// we'll be using GLOB, translated from the path list to satisfy behaviour as described for FTStatsSum()
+func (f *FileTypeStatsDB) pathsWherePredicate(paths []string) string {
+	pred := make([]string, len(paths))
+	for i, d := range paths {
+		d = strings.Replace(d, "'", "''", -1)                          // escape single quotes for SQL
+		if strings.HasSuffix(d, "*/*") || strings.HasSuffix(d, "/*") { // recursive directory
 			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s')", d)
-		} else if strings.HasSuffix(d, "*") || strings.HasSuffix(d, "*/") {
-			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s*/*' AND NOT fileinfo.path GLOB '%s*/*/*')", d, d)
-		} else {
-			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s/*' AND NOT fileinfo.path GLOB '%s*/*')", d, d)
+		} else if strings.HasSuffix(d, "/") || strings.HasSuffix(d, "*/") { // specific directory or directory pattern
+			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s*' AND NOT fileinfo.path GLOB '%s*/*')", d, d)
+		} else { // exact file path or file pattern
+			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s' AND NOT fileinfo.path GLOB '%s/*')", d, d)
 		}
 	}
 	return strings.Join(pred, " OR ")

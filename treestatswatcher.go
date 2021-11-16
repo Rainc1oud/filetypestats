@@ -13,10 +13,16 @@ import (
 	"github.com/ppenguin/filetypestats/ftsdb"
 	ggu "github.com/ppenguin/gogenutils"
 	"github.com/rjeczalik/notify"
+	"golang.org/x/sys/unix"
 )
 
+type tMoveMap map[uint32]struct {
+	From string
+	To   string
+}
 type TreeStatsWatcher struct {
 	TDirMonitors // embed this map, because a TreeStatsWatcher is just TDirMonitors with added state
+	moves        tMoveMap
 	ftsDB        *ftsdb.FileTypeStatsDB
 	wg           *sync.WaitGroup
 }
@@ -33,6 +39,7 @@ func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, err
 	fdb, err = ftsdb.New(database, true)
 	tsw := &TreeStatsWatcher{
 		*NewDirMonitors(),
+		make(tMoveMap),
 		fdb,
 		&sync.WaitGroup{},
 	}
@@ -43,12 +50,12 @@ func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, err
 }
 
 // AddWatch adds a (default) watch for the given dirs
-// Default means: recursive and for events notify.Create, notify.Write, notify.Remove
+// Default means: recursive and for events notify.Create, notify.InModify, notify.Remove
 // For a customised watch, use AddDir()
 func (tsw *TreeStatsWatcher) AddWatch(dirs ...string) error {
 	errs := ggu.NewErrors()
 	for _, d := range dirs {
-		tsw.AddDir(d, true, tsw.onFileChanged, notify.Create, notify.Write, notify.Remove) // TBC: do we need to make this configurable on a higher level?
+		tsw.AddDir(d, true, tsw.onFileChanged, notify.Create, notify.InModify, notify.Remove) // TBC: do we need to make this configurable on a higher level?
 		errs.AddIf(tsw.ScanDirAsync(d))
 	}
 	return errs.Err()
@@ -60,6 +67,7 @@ func (tsw *TreeStatsWatcher) WatchAll() error {
 	for _, d := range tsw.Dirs() {
 		errs.AddIf(tsw.StartWatcher(d))
 	}
+	tsw.wg.Wait() // wait until last watcher finishes
 	return errs.Err()
 }
 
@@ -153,14 +161,27 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 // onFileChanged is the inotify event handler passed to the notify watcher
 // for now we handle create, remove, write (this is like modify but guaranteed on all platforms)
 func (tsw *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
+	cookie := (*eventInfo).Sys().(*unix.InotifyEvent).Cookie // this is a kind of hash to relate the From event to the To event
+	minfo := tsw.moves[cookie]
 	switch (*eventInfo).Event() {
-	case notify.Create, notify.Write:
+	case notify.Create, notify.InModify:
 		if fts, err := getFTStat((*eventInfo).Path()); err == nil {
 			return tsw.ftsDB.UpdateFileStats(fts.Path, fts.FType, fts.NumBytes)
 		} // any stat errors are simply ignored
+	case notify.InMovedFrom:
+		minfo.From = (*eventInfo).Path()
+	case notify.InMovedTo:
+		minfo.To = (*eventInfo).Path()
 	case notify.Remove:
 		return tsw.ftsDB.DeleteFileStats((*eventInfo).Path()) // we can't know for sure whether it's a dir or regular file?
 	}
+
+	if cookie != 0 && minfo.From != "" && minfo.To != "" {
+		err := tsw.ftsDB.UpdateFilePath(minfo.From, minfo.To)
+		delete(tsw.moves, cookie)
+		return err
+	}
+
 	return fmt.Errorf("unhandled event %v for %s", eventInfo, (*eventInfo).Path())
 }
 

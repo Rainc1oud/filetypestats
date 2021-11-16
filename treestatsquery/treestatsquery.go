@@ -9,9 +9,15 @@ import (
 // this is a static package (no object instantiation), since we rely on one-off on-demand queries
 // and don't need/want to hold state
 
-// FTStatsDirs returns the FileTypeStats per dir
-// call with dir="/my/dir/*" to get the recursive totals under that dir, or set recursive=true
-func FTStatsDirs(dbfile string, dirs []string) (types.FileTypeStats, error) {
+// FTStatsSum returns the summary FileTypeStats for the given paths as a map of FTypeStat per File Type
+// Paths can be files or directories. The summary is counted like this for the respective path format
+// path="/my/dir/*" => count /my/dir/ and below recursively
+// path="/my/dir*/*" => count all dirs matching /my/dir*/ and below recursively
+// path="/my/dir/" => count ony the contents of /my/dir/
+// path="/my/dir*/" => count ony the contents of dirs matching /my/dir*/
+// path="/my/file" => count only "/my/file"
+// path="/my/file*" => count all files matching "/my/file*"
+func FTStatsSum(dbfile string, paths []string) (types.FileTypeStats, error) {
 	var err error
 	var fdb *ftsdb.FileTypeStatsDB
 
@@ -20,6 +26,6 @@ func FTStatsDirs(dbfile string, dirs []string) (types.FileTypeStats, error) {
 	}
 	defer fdb.Close()
 
-	res, err := fdb.FTStatsDirs(dirs)
+	res, err := fdb.FTStatsSum(paths)
 	return res, err
 }
