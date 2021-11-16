@@ -5,21 +5,24 @@ package filetypestats
 import (
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"sync"
 
 	"github.com/karrick/godirwalk"
 	"github.com/ppenguin/filetype"
 	"github.com/ppenguin/filetypestats/ftsdb"
+	"github.com/ppenguin/filetypestats/utils"
 	ggu "github.com/ppenguin/gogenutils"
 	"github.com/rjeczalik/notify"
 	"golang.org/x/sys/unix"
 )
 
-type tMoveMap map[uint32]struct {
+type tMoveInfo struct {
 	From string
 	To   string
 }
+type tMoveMap map[uint32]*tMoveInfo
 type TreeStatsWatcher struct {
 	TDirMonitors // embed this map, because a TreeStatsWatcher is just TDirMonitors with added state
 	moves        tMoveMap
@@ -55,7 +58,7 @@ func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, err
 func (tsw *TreeStatsWatcher) AddWatch(dirs ...string) error {
 	errs := ggu.NewErrors()
 	for _, d := range dirs {
-		tsw.AddDir(d, true, tsw.onFileChanged, notify.Create, notify.InModify, notify.Remove) // TBC: do we need to make this configurable on a higher level?
+		tsw.AddDir(d, true, tsw.onFileChanged, notify.InCreate, notify.InModify, notify.InMovedFrom, notify.InMovedTo, notify.Remove) // TBC: do we need to make this configurable on a higher level?
 		errs.AddIf(tsw.ScanDirAsync(d))
 	}
 	return errs.Err()
@@ -162,26 +165,47 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 // for now we handle create, remove, write (this is like modify but guaranteed on all platforms)
 func (tsw *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
 	cookie := (*eventInfo).Sys().(*unix.InotifyEvent).Cookie // this is a kind of hash to relate the From event to the To event
-	minfo := tsw.moves[cookie]
+	minfo, ok := tsw.moves[cookie]
+	if !ok {
+		minfo = &tMoveInfo{}
+		tsw.moves[cookie] = minfo
+	}
 	switch (*eventInfo).Event() {
-	case notify.Create, notify.InModify:
-		if fts, err := getFTStat((*eventInfo).Path()); err == nil {
-			return tsw.ftsDB.UpdateFileStats(fts.Path, fts.FType, fts.NumBytes)
+	case notify.InCreate, notify.InModify:
+		if minfo.From == "" && minfo.To == "" { // only execute create if not already moving
+			if fts, err := getFTStat((*eventInfo).Path()); err == nil {
+				return tsw.ftsDB.UpdateFileStats(fts.Path, fts.FType, fts.NumBytes)
+			}
 		} // any stat errors are simply ignored
 	case notify.InMovedFrom:
 		minfo.From = (*eventInfo).Path()
 	case notify.InMovedTo:
 		minfo.To = (*eventInfo).Path()
-	case notify.Remove:
-		return tsw.ftsDB.DeleteFileStats((*eventInfo).Path()) // we can't know for sure whether it's a dir or regular file?
+	case notify.Remove: // TODO: it is a real problem that we don't know whether it is a dir or a file?
+		if minfo.From == "" && minfo.To == "" { // only execute remove if not already moving
+			return tsw.ftsDB.DeleteFileStats((*eventInfo).Path())
+		}
 	}
 
 	if cookie != 0 && minfo.From != "" && minfo.To != "" {
-		err := tsw.ftsDB.UpdateFilePath(minfo.From, minfo.To)
+		// verrry important to make sure that a dir gets a trailing /, otherwise a file with a similar naome (or all dirs starting with the same name) would also be renamed in the DB!
+		// since we have no way to find out from the event whether the target is a dir, we have to stat it
+		fi, err := os.Lstat(minfo.To)
+		if err != nil {
+			return fmt.Errorf("couldn't get file info for moved target %s in event %v, not handling move", minfo.To, eventInfo)
+		}
+		if fi.IsDir() {
+			minfo.From = utils.DirTrailSep(minfo.From)
+			minfo.To = utils.DirTrailSep(minfo.To)
+		}
+		log.Printf("updating DB for file move %s -> %s", minfo.From, minfo.To)
+		err = tsw.ftsDB.UpdateFilePath(minfo.From, minfo.To)
 		delete(tsw.moves, cookie)
 		return err
 	}
-
+	if minfo.From != "" || minfo.To != "" { // we're in the middle of a move op, continue and await the second event
+		return nil
+	}
 	return fmt.Errorf("unhandled event %v for %s", eventInfo, (*eventInfo).Path())
 }
 
