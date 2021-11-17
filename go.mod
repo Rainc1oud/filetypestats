@@ -7,10 +7,10 @@ require (
 	github.com/karrick/godirwalk v1.16.1
 	github.com/mattn/go-sqlite3 v1.14.8
 	github.com/ppenguin/filetype v1.1.2
-	github.com/ppenguin/gogenutils v0.2.2
+	github.com/ppenguin/gogenutils v0.2.3
 	github.com/rjeczalik/notify v0.9.2
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/sys v0.0.0-20211015200801-69063c4bb744 // indirect
+	golang.org/x/sys v0.0.0-20211015200801-69063c4bb744
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 

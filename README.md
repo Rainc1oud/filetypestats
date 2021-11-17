@@ -22,6 +22,14 @@ For x-platform, we first try `notify`, if it is too resource-hungry, we may have
 
 ## Changelog (anecdotal)
 
+### v0.4.0
+
+Refactor to get rid of redundant keeping of dir status, which was bad for robustness and maintainability.
+
+The single source of truth regarding watched dirs is `TDirMonitors` which is `map[string]*TDirMonitor`, where `TDirMonitor` is a simple composition of `NotifyWatcher` with some state info that needs to be kept per watcher but isn't supported by the `NotifyWatcher` itself.
+
+`TDirMonitors` is responsible for managing notify watcher processes, but the event notification handler is provided by `TreeStatsWatcher`, as well as any other functions that need to access the DB or coordinate `TDirMonitors`.
+
 ### v0.3.4
 
 Return struct changed from a map of dirs (which was not actually used as such) to `FileTypeStats`, which looks like this:

@@ -11,8 +11,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/ppenguin/filetype v1.1.2 h1:0fN0Q2F9P4PcEtLghtp4cLJpuSrJPiEjIjZ2B/lD19E=
 github.com/ppenguin/filetype v1.1.2/go.mod h1:n0TIcLtrwKvqVxj9FU19PGhhi9fkLz3ILPFOK8U8/FQ=
-github.com/ppenguin/gogenutils v0.2.2 h1:j94SdFL5gM06VRqFqJUwNqN+bCaDD4iF5No/xeHyo5c=
-github.com/ppenguin/gogenutils v0.2.2/go.mod h1:UDr6Yowtg3+EYnvOkpjMWGruuSvNAkuANuHuYUUcmrY=
+github.com/ppenguin/gogenutils v0.2.3 h1:udNDXE8xMvjLU392EKaTPh1rlJKtjPBujPwaElIee+4=
+github.com/ppenguin/gogenutils v0.2.3/go.mod h1:UDr6Yowtg3+EYnvOkpjMWGruuSvNAkuANuHuYUUcmrY=
 github.com/rjeczalik/notify v0.9.2 h1:MiTWrPj55mNDHEiIX5YUSKefw/+lCQVoAFmD6oQm5w8=
 github.com/rjeczalik/notify v0.9.2/go.mod h1:aErll2f0sUX9PXZnVNyeiObbmTlk5jnMoCa4QEjJeqM=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
