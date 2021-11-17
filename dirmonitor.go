@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ppenguin/filetypestats/notifywatch"
+	ggu "github.com/ppenguin/gogenutils"
 	"github.com/rjeczalik/notify"
 )
 
@@ -75,8 +76,29 @@ func (dm *TDirMonitors) getItem(dir string) *TDirMonitor {
 	}
 }
 
-// AddDir adds dir to the DirMonitors collection with a new DirMonitor instance
+// overlappedDirs returns all dirs that should be removed from the set {dir, Dirs()} because they are overlapped by a parent from the set (i.e. the returned list contains all entries that are under other entries in dir hierarchy)
+func (dm *TDirMonitors) overlappedDirs(dir string) []string {
+	alldirs := append(dm.Dirs(), dir)
+	filtdirs := ggu.FilterCommonRootDirs(alldirs)
+	rmdirs := []string{}
+	for _, d := range alldirs {
+		if !ggu.InSlice(d, filtdirs) {
+			rmdirs = append(rmdirs, d)
+		}
+	}
+	return rmdirs
+}
+
+// AddDir adds dir to the DirMonitors collection with a new DirMonitor instance, while removing all overlapping dirs
 func (dm *TDirMonitors) AddDir(dir string, recursive bool, handler notifywatch.NotifyHandlerFun, events ...notify.Event) *TDirMonitor {
+	unwanted := dm.overlappedDirs(dir)
+	if ggu.InSlice(dir, unwanted) {
+		unwanted = ggu.RemoveFromStringSlice(dir, unwanted)
+	}
+	if len(unwanted) > 0 {
+		dm.RemoveDirs(unwanted...)
+		return nil
+	}
 	if v, ok := (*dm)[dir]; ok {
 		return v // ignore if exists
 	}
@@ -84,7 +106,16 @@ func (dm *TDirMonitors) AddDir(dir string, recursive bool, handler notifywatch.N
 	return (*dm)[dir]
 }
 
-// RemoveDir removes dir from status
+// RemoveDirs removes dirs from the container
+func (dm *TDirMonitors) RemoveDirs(dirs ...string) error {
+	errs := ggu.NewErrors()
+	for _, d := range dirs {
+		errs.AddIf(dm.RemoveDir(d))
+	}
+	return errs.Err()
+}
+
+// RemoveDir removes dir from the container
 func (dm *TDirMonitors) RemoveDir(dir string) error {
 	if _, ok := (*dm)[dir]; !ok {
 		return fmt.Errorf("monitor for %s doesn't exist, watcher not removed", dir)
