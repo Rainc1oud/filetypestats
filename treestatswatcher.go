@@ -12,11 +12,14 @@ import (
 	"github.com/karrick/godirwalk"
 	"github.com/ppenguin/filetype"
 	"github.com/ppenguin/filetypestats/ftsdb"
+	"github.com/ppenguin/filetypestats/notifywatch"
 	"github.com/ppenguin/filetypestats/utils"
 	ggu "github.com/ppenguin/gogenutils"
 	"github.com/rjeczalik/notify"
 	"golang.org/x/sys/unix"
 )
+
+var defaultNotifyEvents = []notify.Event{notify.InCreate, notify.InModify, notify.InMovedFrom, notify.InMovedTo, notify.Remove}
 
 type tMoveInfo struct {
 	From string
@@ -27,6 +30,7 @@ type TreeStatsWatcher struct {
 	TDirMonitors // embed this map, because a TreeStatsWatcher is just TDirMonitors with added state
 	moves        tMoveMap
 	ftsDB        *ftsdb.FileTypeStatsDB
+	eventHandler notifywatch.NotifyHandlerFun
 	wg           *sync.WaitGroup
 }
 
@@ -44,21 +48,21 @@ func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, err
 		*NewDirMonitors(),
 		make(tMoveMap),
 		fdb,
+		nil,
 		&sync.WaitGroup{},
 	}
-	for _, d := range dirs {
-		tsw.AddWatch(d)
-	}
+	tsw.eventHandler = tsw.onFileChanged // set default event handler
+	tsw.AddWatch(dirs...)
 	return tsw, err // always return a valid watcher instance, we can add dirs and use other features later
 }
 
 // AddWatch adds a (default) watch for the given dirs
-// Default means: recursive and for events notify.Create, notify.InModify, notify.Remove
+// Default means: recursive and for events notify.InCreate, notify.InModify, notify.InMovedFrom, notify.InMovedTo, notify.Remove
 // For a customised watch, use AddDir()
 func (tsw *TreeStatsWatcher) AddWatch(dirs ...string) error {
 	errs := ggu.NewErrors()
 	for _, d := range dirs {
-		tsw.AddDir(d, true, tsw.onFileChanged, notify.InCreate, notify.InModify, notify.InMovedFrom, notify.InMovedTo, notify.Remove) // TBC: do we need to make this configurable on a higher level?
+		tsw.AddDir(d, true, tsw.onFileChanged, defaultNotifyEvents...) // TBC: do we need to make this configurable on a higher level?
 		errs.AddIf(tsw.ScanDirAsync(d))
 	}
 	return errs.Err()
@@ -228,7 +232,7 @@ func (tsw *TreeStatsWatcher) StartWatcher(dir string) error {
 }
 
 // StopWatcher stops and removes the watcher for dir
-// (The DirMonitor s removed entirely, because we have no way to re-start a stopped watcher, so its existence becomes meaningless after stopping)
+// (The DirMonitor is removed entirely, because we have no way to re-start a stopped watcher, so its existence becomes meaningless after stopping)
 func (tsw *TreeStatsWatcher) StopWatcher(dir string) error {
 	w, ok := tsw.TDirMonitors[dir]
 	if !ok {

@@ -75,7 +75,7 @@ func (dm *TDirMonitors) getItem(dir string) *TDirMonitor {
 	}
 }
 
-// AddDir adds dir
+// AddDir adds dir to the DirMonitors collection with a new DirMonitor instance
 func (dm *TDirMonitors) AddDir(dir string, recursive bool, handler notifywatch.NotifyHandlerFun, events ...notify.Event) *TDirMonitor {
 	if v, ok := (*dm)[dir]; ok {
 		return v // ignore if exists
