@@ -47,6 +47,12 @@ func (t *TDirMonitor) isDirty() bool {
 
 type TDirMonitors map[string]*TDirMonitor
 
+type TDirMonitorsStatus struct {
+	Dirty            bool
+	ScanStartedLast  time.Time
+	ScanFinishedLast time.Time
+}
+
 // TODO: this is a generic function for any map[string]interface{}, handle after generics support is here (go1.18)
 func (dm *TDirMonitors) keys() []string {
 	s := make([]string, len(*dm))
@@ -74,6 +80,24 @@ func (dm *TDirMonitors) getItem(dir string) *TDirMonitor {
 		time.Time{},
 		false,
 	}
+}
+
+func (dm *TDirMonitors) Status() *TDirMonitorsStatus {
+	dms := &TDirMonitorsStatus{
+		Dirty:            false,
+		ScanStartedLast:  time.Time{},
+		ScanFinishedLast: time.Time{},
+	}
+	for _, k := range dm.keys() {
+		if dms.ScanStartedLast.Before((*dm)[k].scanStarted()) {
+			dms.ScanStartedLast = (*dm)[k].scanStarted()
+		}
+		if dms.ScanFinishedLast.Before((*dm)[k].scanFinished()) {
+			dms.ScanFinishedLast = (*dm)[k].scanFinished()
+		}
+		dms.Dirty = dms.Dirty || (*dm)[k].isDirty()
+	}
+	return dms
 }
 
 // overlappedDirs returns all dirs that should be removed from the set {dir, Dirs()} because they are overlapped by a parent from the set (i.e. the returned list contains all entries that are under other entries in dir hierarchy)
