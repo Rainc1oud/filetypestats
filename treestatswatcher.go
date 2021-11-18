@@ -43,7 +43,11 @@ type TreeStatsWatcher struct {
 func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, error) {
 	var fdb *ftsdb.FileTypeStatsDB
 	var err error
-	fdb, err = ftsdb.New(database, true)
+	if database != "" {
+		fdb, err = ftsdb.New(database, true)
+	} else {
+		fdb = nil
+	}
 	tsw := &TreeStatsWatcher{
 		*NewDirMonitors(),
 		make(tMoveMap),

@@ -30,6 +30,23 @@ func DirTrailSep(path string) string {
 	return JustDir(path) + string(filepath.Separator)
 }
 
+// HarmonizePathStar returns "path/" => "path/*" or "path///" => "path/*" or "pathxxxyyy" => "pathxxxyyy"
+func CleanPath(path string) string {
+	if strings.HasSuffix(path, "//") { // TODO: somehow this occurs sometimes, the extra / might be due to over-correction somewhere? TODO: better fix root cause
+		path = strings.TrimRight(path, "/") + "/" // remove all trailing / and re-add one /
+	}
+	return path
+}
+
+// CleanPathStar returns "path/" => "path/*" or "path///" => "path/*" or "pathxxxyyy" => "pathxxxyyy"
+func CleanPathStar(path string) string {
+	path = CleanPath(path)
+	if strings.HasSuffix(path, "/") {
+		path += "*"
+	}
+	return path
+}
+
 func IsDirRecursive(path string) bool {
 	return strings.HasSuffix(path, string(filepath.Separator)) || strings.HasSuffix(path, string(filepath.Separator)+"*") || strings.HasSuffix(path, string(filepath.Separator)+"...")
 }
