@@ -227,7 +227,7 @@ func (tsw *TreeStatsWatcher) StartWatcher(dir string) error {
 		return fmt.Errorf("refusing to start already running watcher for %s", dir)
 	}
 	tsw.wg.Add(1)
-	go func() { // we cat do without passing wg because it's a pointer we don't change?
+	go func() { // we can do without passing wg because it's a pointer we don't change?
 		_ = w.Watch() // TODO: error handling?
 		tsw.wg.Done()
 		delete(tsw.TDirMonitors, dir)

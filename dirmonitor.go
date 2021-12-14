@@ -144,7 +144,7 @@ func (dm *TDirMonitors) RemoveDir(dir string) error {
 	if _, ok := (*dm)[dir]; !ok {
 		return fmt.Errorf("monitor for %s doesn't exist, watcher not removed", dir)
 	}
-	err := (*dm)[dir].Stop() // TBC: do we need to handle the error?
+	err := (*dm)[dir].Stop() // TBC: do we need to handle the error? probably not, because it's basically a warning (channel already closed)
 	delete(*dm, dir)         // no need to check existence, delete non-existing is no-op
 	return err
 }
