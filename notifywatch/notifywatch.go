@@ -41,13 +41,14 @@ func (nw *NotifyWatcher) Watch() error {
 		return fmt.Errorf("ERROR: refusing to start empty watcher")
 	}
 	var dir string
+	var err error
 	if nw.recursive {
 		dir = utils.Dir3Dot(nw.watchdir)
 	} else {
 		dir = nw.watchdir
 	}
 	nw.watching = true
-	if err := notify.Watch(dir, nw.eventInfo, nw.events...); err != nil { // blocking function
+	if err = notify.Watch(dir, nw.eventInfo, nw.events...); err != nil { // blocking function
 		// log.Printf("error: %s", err.Error())
 		nw.watching = false
 		return err
@@ -58,24 +59,31 @@ func (nw *NotifyWatcher) Watch() error {
 		ei, ok := <-nw.eventInfo // this should exit the loop when we close the channel by executing nw.Stop()
 		if ok {
 			log.Printf("got event: %v; executing handler...", ei) // FIXME: uncontrolled logging
-			if err := nw.handler(&ei); err != nil {
+			if err = nw.handler(&ei); err != nil {
 				log.Printf("failed executing handler for event: %v; %s", ei, err.Error()) // FIXME: uncontrolled logging
 			}
 		} else {
+			err = fmt.Errorf("watcher for %s terminated", nw.watchdir)
 			break
 		}
 	}
 	nw.watching = false
-	return nil
+	return err
 }
 
 func (nw *NotifyWatcher) Stop() error {
-	if _, ok := <-nw.eventInfo; !ok {
-		return fmt.Errorf("channel nw.EventInfo already closed")
-	}
-	close(nw.eventInfo) // can we do this? we probably need to be careful in the watch loop?
 	nw.watching = false
-	return nil
+	select {
+	case _, ok := <-nw.eventInfo:
+		if !ok {
+			return fmt.Errorf("channel nw.EventInfo already closed")
+		} else {
+			close(nw.eventInfo) // can we do this? we probably need to be careful in the watch loop?
+			return nil
+		}
+	default:
+		return nil
+	}
 }
 
 func (nw *NotifyWatcher) IsWatching() bool {
