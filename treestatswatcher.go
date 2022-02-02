@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/karrick/godirwalk"
 	"github.com/ppenguin/filetype"
@@ -27,11 +28,12 @@ type tMoveInfo struct {
 }
 type tMoveMap map[uint32]*tMoveInfo
 type TreeStatsWatcher struct {
-	TDirMonitors // embed this map, because a TreeStatsWatcher is just TDirMonitors with added state
-	moves        tMoveMap
-	ftsDB        *ftsdb.FileTypeStatsDB
-	eventHandler notifywatch.NotifyHandlerFun
-	wg           *sync.WaitGroup
+	TDirMonitors     // embed this map, because a TreeStatsWatcher is just TDirMonitors with added state
+	lastScanDuration time.Duration
+	moves            tMoveMap
+	ftsDB            *ftsdb.FileTypeStatsDB
+	eventHandler     notifywatch.NotifyHandlerFun
+	wg               *sync.WaitGroup
 }
 
 // NewTreeStatsWatcher is the top level constructor featuring:
@@ -50,6 +52,7 @@ func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, err
 	}
 	tsw := &TreeStatsWatcher{
 		*NewDirMonitors(),
+		time.Duration(0),
 		make(tMoveMap),
 		fdb,
 		nil,
@@ -95,11 +98,13 @@ func (tsw *TreeStatsWatcher) StopWatchAll() error {
 // This can take a long time (minutes to hours) to complete
 func (tsw *TreeStatsWatcher) ScanAllSync() error {
 	errs := ggu.NewErrors()
+	tb := time.Now()
 	for _, d := range tsw.Dirs() {
 		if err := tsw.ScanDir(d); err != nil {
 			errs.AddIf(fmt.Errorf("error [%s]: %s", d, err.Error()))
 		}
 	}
+	tsw.lastScanDuration = time.Since(tb)
 	// tsw.ftsDB.DeleteOlderThan(tsw.lastScanStarted) // delete all entries from before the scan (i.e. not updated during the scan, because this means they were deleted)
 	return errs.Err()
 }
@@ -246,4 +251,14 @@ func (tsw *TreeStatsWatcher) StopWatcher(dir string) error {
 		return fmt.Errorf("refusing to stop already stopped watcher for %s", dir)
 	}
 	return tsw.RemoveDir(dir)
+}
+
+func (tsw *TreeStatsWatcher) ScanDurationLast() time.Duration {
+	sd := tsw.lastScanDuration
+	for _, v := range tsw.TDirMonitors { // if a single dir scan duration was longer than the last full scan, we use the largest value
+		if sd < v.dlastscan {
+			sd = v.dlastscan
+		}
+	}
+	return sd
 }

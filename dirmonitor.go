@@ -13,6 +13,7 @@ type TDirMonitor struct {
 	notifywatch.NotifyWatcher // embed NotifyWatcher, because TDirMonitor is just a Watcer with added state and access/info methods
 	tstarted                  time.Time
 	tfinished                 time.Time
+	dlastscan                 time.Duration
 	dirty                     bool
 }
 
@@ -21,6 +22,7 @@ func newDirMonitor(dir string, recursive bool, handler notifywatch.NotifyHandler
 		*notifywatch.NewNotifyWatcher(dir, recursive, handler, events...),
 		time.Time{},
 		time.Time{},
+		time.Duration(0),
 		false,
 	}
 	return dm
@@ -34,6 +36,7 @@ func (t *TDirMonitor) scanStart() {
 }
 func (t *TDirMonitor) scanFinish() {
 	t.tfinished = time.Now()
+	t.dlastscan = time.Since(t.tstarted)
 }
 func (t *TDirMonitor) scanStarted() time.Time {
 	return t.tstarted
@@ -51,6 +54,7 @@ type TDirMonitorsStatus struct {
 	Dirty            bool
 	ScanStartedLast  time.Time
 	ScanFinishedLast time.Time
+	ScanLongestLast  time.Duration // the longest duration of all last dir scans
 }
 
 // TODO: this is a generic function for any map[string]interface{}, handle after generics support is here (go1.18)
@@ -78,6 +82,7 @@ func (dm *TDirMonitors) getItem(dir string) *TDirMonitor {
 		notifywatch.NotifyWatcher{},
 		time.Time{},
 		time.Time{},
+		time.Duration(0),
 		false,
 	}
 }
@@ -87,6 +92,7 @@ func (dm *TDirMonitors) Status() *TDirMonitorsStatus {
 		Dirty:            false,
 		ScanStartedLast:  time.Time{},
 		ScanFinishedLast: time.Time{},
+		ScanLongestLast:  time.Duration(0),
 	}
 	for _, k := range dm.keys() {
 		if dms.ScanStartedLast.Before((*dm)[k].scanStarted()) {
@@ -94,6 +100,9 @@ func (dm *TDirMonitors) Status() *TDirMonitorsStatus {
 		}
 		if dms.ScanFinishedLast.Before((*dm)[k].scanFinished()) {
 			dms.ScanFinishedLast = (*dm)[k].scanFinished()
+		}
+		if dms.ScanLongestLast < (*dm)[k].dlastscan {
+			dms.ScanLongestLast = (*dm)[k].dlastscan
 		}
 		dms.Dirty = dms.Dirty || (*dm)[k].isDirty()
 	}
