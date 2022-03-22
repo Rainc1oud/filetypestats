@@ -1,6 +1,8 @@
 package treestatsquery
 
 import (
+	"fmt"
+
 	"github.com/ppenguin/filetypestats/ftsdb"
 	"github.com/ppenguin/filetypestats/types"
 )
@@ -27,5 +29,20 @@ func FTStatsSum(dbfile string, paths []string) (types.FileTypeStats, error) {
 	defer fdb.Close()
 
 	res, err := fdb.FTStatsSum(paths)
+	return res, err
+}
+
+func FTStatsSumDB(dbconn *ftsdb.FileTypeStatsDB, paths []string) (types.FileTypeStats, error) {
+	var err error
+	if dbconn == nil {
+		err = fmt.Errorf("invalid: dbconn==nil")
+	} else if !dbconn.IsOpened {
+		err = fmt.Errorf("dbconn is not open")
+	}
+	if err != nil {
+		return types.FileTypeStats{}, err
+	}
+
+	res, err := dbconn.FTStatsSum(paths)
 	return res, err
 }
