@@ -42,24 +42,17 @@ type TreeStatsWatcher struct {
 // An instance is always returned, even if an error occurred
 // dirs will be trimmed of trailing suffixes and evaluated recursively
 // If dirs is empty, you can add watches later with AddWatch() or AddDir()
-func NewTreeStatsWatcher(dirs []string, database string) (*TreeStatsWatcher, error) {
-	var fdb *ftsdb.FileTypeStatsDB
-	var err error
-	if database != "" {
-		fdb, err = ftsdb.New(database, true)
-	} else {
-		fdb = nil
-	}
+func NewTreeStatsWatcher(dirs []string, dbconn *ftsdb.FileTypeStatsDB) (*TreeStatsWatcher, error) {
 	tsw := &TreeStatsWatcher{
 		*NewDirMonitors(),
 		time.Duration(0),
 		make(tMoveMap),
-		fdb,
+		dbconn,
 		nil,
 		&sync.WaitGroup{},
 	}
 	tsw.eventHandler = tsw.onFileChanged // set default event handler
-	tsw.AddWatch(dirs...)
+	err := tsw.AddWatch(dirs...)
 	return tsw, err // always return a valid watcher instance, we can add dirs and use other features later
 }
 
