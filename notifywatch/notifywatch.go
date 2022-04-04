@@ -2,7 +2,6 @@ package notifywatch
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/ppenguin/filetypestats/utils"
 	"github.com/rjeczalik/notify"
@@ -58,9 +57,10 @@ func (nw *NotifyWatcher) Watch() error {
 	for {
 		ei, ok := <-nw.eventInfo // this should exit the loop when we close the channel by executing nw.Stop()
 		if ok {
-			log.Printf("got event: %v; executing handler...", ei) // FIXME: uncontrolled logging
+			// log.Printf("got event: %v; executing handler...", ei) // FIXME: uncontrolled logging
 			if err = nw.handler(&ei); err != nil {
-				log.Printf("failed executing handler for event: %v; %s", ei, err.Error()) // FIXME: uncontrolled logging
+				// log.Printf("failed executing handler for event: %v; %s", ei, err.Error()) // FIXME: uncontrolled logging
+				// TODO: consider how to handle this error
 			}
 		} else {
 			err = fmt.Errorf("watcher for %s terminated", nw.watchdir)
