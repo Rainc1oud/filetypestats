@@ -37,8 +37,8 @@ build/linux-amd64/testcli: internal/cmd/testcli/testcli.go $(GOSRC)
 build/linux-arm/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/testcli.go $(GOSRC)
 	$(DOCKERPULL)
 	[[ -d "$(CURDIR)/build" ]] || mkdir -p "$(CURDIR)/build"
-	$(DOCKEREXE) run --rm -v $(CURDIR):/buildroot -v $(CURDIR)/build:/build/ $(IMGNAME) bash -c '. /etc/environment; cd /buildroot; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
+	$(DOCKEREXE) run --rm -v $(CURDIR):/buildroot -v $(CURDIR)/build:/build/ -w /buildroot $(IMGNAME) bash -c '. /etc/environment; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
 build/linux-arm64/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/testcli.go $(GOSRC)
 	$(DOCKERPULL)
 	[[ -d "$(CURDIR)/build" ]] || mkdir -p "$(CURDIR)/build"
-	$(DOCKEREXE) run --rm -v $(CURDIR):/buildroot -v $(CURDIR)/build:/build/ $(IMGNAME) bash -c '. /etc/environment; cd /buildroot; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
+	$(DOCKEREXE) run --rm -v $(CURDIR):/buildroot -v $(CURDIR)/build:/build/ -w /buildroot $(IMGNAME) bash -c '. /etc/environment; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
