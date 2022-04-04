@@ -179,8 +179,8 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
 
 	if _, err := f.DB.Exec((fmt.Sprintf(
-		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, %d, %d) 
-			ON CONFLICT(path) DO 
+		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, %d, %d)
+			ON CONFLICT(path) DO
 			UPDATE SET size=%d, catid=%d, updated=%d`, path, size, catid, time.Now().Unix(), size, catid, time.Now().Unix()))); err != nil {
 		return err
 	}
@@ -211,7 +211,7 @@ func (f *FileTypeStatsDB) DeleteOlderThan(t time.Time) error {
 // DeleteOlderThanWithPrefix deletes all entries older than (i.e. not updated after) t
 func (f *FileTypeStatsDB) DeleteOlderThanWithPrefix(t time.Time, prefix string) error {
 	if _, err := f.DB.Exec((fmt.Sprintf(
-		`DELETE FROM fileinfo 
+		`DELETE FROM fileinfo
 		WHERE fileinfo.updated < %d
 			AND (fileinfo.path GLOB '%s/*' OR fileinfo.path='%s')`, t.Unix(), prefix, prefix))); err != nil {
 		return err
@@ -225,11 +225,15 @@ func (f *FileTypeStatsDB) DeleteFileStats(path string) error {
 	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
 
 	if _, err := f.DB.Exec((fmt.Sprintf(
-		`DELETE FROM fileinfo WHERE 
+		`DELETE FROM fileinfo WHERE
 			fileinfo.path GLOB '%s/*' OR fileinfo.path='%s'`, path, path))); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (f *FileTypeStatsDB) DbFileName() string {
+	return f.fileName
 }
 
 // returns table.id where field==value, inserts value if not exist (id must be AUTOINCREMENT)

@@ -5,7 +5,6 @@ package filetypestats
 import (
 	"fmt"
 	"io/fs"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -153,7 +152,7 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 		},
 		Unsorted: true, // (optional) set true for faster yet non-deterministic enumeration (see godoc)
 		ErrorCallback: func(s string, e error) godirwalk.ErrorAction {
-			fmt.Fprintf(os.Stderr, "warning: %s reading %s\n", e.Error(), s)
+			// fmt.Fprintf(os.Stderr, "warning: %s reading %s\n", e.Error(), s)
 			return godirwalk.SkipNode
 		},
 	})
@@ -204,7 +203,7 @@ func (tsw *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
 			minfo.From = utils.DirTrailSep(minfo.From)
 			minfo.To = utils.DirTrailSep(minfo.To)
 		}
-		log.Printf("updating DB for file move %s -> %s", minfo.From, minfo.To) // FIXME: uncontrolled logging
+		// log.Printf("updating DB for file move %s -> %s", minfo.From, minfo.To) // FIXME: uncontrolled logging
 		err = tsw.ftsDB.UpdateFilePath(minfo.From, minfo.To)
 		delete(tsw.moves, cookie)
 		return err
