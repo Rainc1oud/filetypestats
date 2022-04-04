@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +13,10 @@ import (
 	"github.com/ppenguin/filetypestats/treestatsquery"
 	"github.com/ppenguin/filetypestats/types"
 	utils "github.com/ppenguin/gogenutils"
+)
+
+var (
+	dbinstance *ftsdb.FileTypeStatsDB
 )
 
 func main() {
@@ -109,7 +114,7 @@ func summary(dirs []string, file string) {
 func watch(dirs []string, file string) {
 	var fts *filetypestats.TreeStatsWatcher
 	var err error
-	if fts, err = filetypestats.NewTreeStatsWatcher(dirs, file); err != nil {
+	if fts, err = filetypestats.NewTreeStatsWatcher(dirs, getDB(file)); err != nil {
 		exiterr(err)
 	}
 	fmt.Printf("Watching dirs %v for changes (blocking), press ctrl-c to stop; open a second instance to query the database (read-only)", dirs)
@@ -121,4 +126,21 @@ func printstats(ftstats types.FileTypeStats) {
 	for _, catstat := range ftstats {
 		fmt.Printf("%10s: \t%30s (%8s) \t%5d files\n", catstat.FType, catstat.Path, utils.ByteCountSI(catstat.NumBytes), catstat.FileCount)
 	}
+}
+
+// TODO: consider giving ftsdb a singleton instance for the db connection
+func getDB(dbfile string) *ftsdb.FileTypeStatsDB {
+	if dbinstance.DbFileName() == dbfile {
+		return dbinstance
+	}
+
+	var err error
+
+	if dbinstance == nil {
+		dbinstance, err = ftsdb.New(dbfile, true)
+	}
+	if err != nil {
+		log.Fatalf("couldn't read or create database file: %s", err.Error())
+	}
+	return dbinstance
 }

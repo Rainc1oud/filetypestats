@@ -2,20 +2,23 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/ppenguin/filetypestats"
+	"github.com/ppenguin/filetypestats/ftsdb"
 	"github.com/ppenguin/filetypestats/treestatsquery"
 	"github.com/ppenguin/filetypestats/utils"
 	"github.com/ppenguin/gogenutils"
 )
 
 var (
-	testdirs = []string{"Documents", "Downloads"} // just Q&D, make sure to put existing dirs here
-	dbfile   string
-	tsw      *filetypestats.TreeStatsWatcher
+	testdirs   = []string{"Documents", "Downloads"} // just Q&D, make sure to put existing dirs here
+	dbfile     string
+	tsw        *filetypestats.TreeStatsWatcher
+	dbinstance *ftsdb.FileTypeStatsDB
 )
 
 func exitErr(err error) {
@@ -33,7 +36,7 @@ func main() {
 	}
 
 	dbfile = filepath.Join(wd, "testdb.sqlite")
-	tsw, err = filetypestats.NewTreeStatsWatcher(dirs, dbfile)
+	tsw, err = filetypestats.NewTreeStatsWatcher(dirs, getDB(dbfile))
 	if err != nil {
 		exitErr(err)
 	}
@@ -157,4 +160,20 @@ func getFileSizeCount(files []string) (uint64, uint) {
 		}
 	}
 	return size, count
+}
+
+func getDB(dbfile string) *ftsdb.FileTypeStatsDB {
+	if dbinstance.DbFileName() == dbfile {
+		return dbinstance
+	}
+
+	var err error
+
+	if dbinstance == nil {
+		dbinstance, err = ftsdb.New(dbfile, true)
+	}
+	if err != nil {
+		log.Fatalf("couldn't read or create database file: %s", err.Error())
+	}
+	return dbinstance
 }
