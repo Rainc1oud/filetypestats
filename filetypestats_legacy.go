@@ -8,12 +8,12 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/Rainc1oud/filetype"
 	"github.com/karrick/godirwalk"
-	"github.com/ppenguin/filetype"
 
-	"github.com/ppenguin/filetypestats/ftsdb"
-	"github.com/ppenguin/filetypestats/types"
-	"github.com/ppenguin/gogenutils"
+	"github.com/Rainc1oud/filetypestats/ftsdb"
+	"github.com/Rainc1oud/filetypestats/types"
+	"github.com/Rainc1oud/gogenutils"
 )
 
 func WalkFileTypeStatsDB(scanDirs []string, dbfile string) (types.FileTypeStats, error) {

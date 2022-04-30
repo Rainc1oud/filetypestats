@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ppenguin/filetypestats/notifywatch"
-	ggu "github.com/ppenguin/gogenutils"
+	"github.com/Rainc1oud/filetypestats/notifywatch"
+	ggu "github.com/Rainc1oud/gogenutils"
 	"github.com/rjeczalik/notify"
 )
 

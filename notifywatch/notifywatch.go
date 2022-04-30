@@ -3,7 +3,7 @@ package notifywatch
 import (
 	"fmt"
 
-	"github.com/ppenguin/filetypestats/utils"
+	"github.com/Rainc1oud/filetypestats/utils"
 	"github.com/rjeczalik/notify"
 )
 

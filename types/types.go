@@ -3,7 +3,7 @@ package types
 import (
 	"fmt"
 
-	"github.com/ppenguin/gogenutils"
+	"github.com/Rainc1oud/gogenutils"
 )
 
 var (

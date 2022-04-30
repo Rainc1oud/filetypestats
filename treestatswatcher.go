@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Rainc1oud/filetype"
+	"github.com/Rainc1oud/filetypestats/ftsdb"
+	"github.com/Rainc1oud/filetypestats/notifywatch"
+	"github.com/Rainc1oud/filetypestats/utils"
+	ggu "github.com/Rainc1oud/gogenutils"
 	"github.com/karrick/godirwalk"
-	"github.com/ppenguin/filetype"
-	"github.com/ppenguin/filetypestats/ftsdb"
-	"github.com/ppenguin/filetypestats/notifywatch"
-	"github.com/ppenguin/filetypestats/utils"
-	ggu "github.com/ppenguin/gogenutils"
 	"github.com/rjeczalik/notify"
 	"golang.org/x/sys/unix"
 )

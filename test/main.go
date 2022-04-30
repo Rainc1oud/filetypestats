@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ppenguin/filetypestats"
-	"github.com/ppenguin/filetypestats/ftsdb"
-	"github.com/ppenguin/filetypestats/treestatsquery"
-	"github.com/ppenguin/filetypestats/utils"
-	"github.com/ppenguin/gogenutils"
+	"github.com/Rainc1oud/filetypestats"
+	"github.com/Rainc1oud/filetypestats/ftsdb"
+	"github.com/Rainc1oud/filetypestats/treestatsquery"
+	"github.com/Rainc1oud/filetypestats/utils"
+	"github.com/Rainc1oud/gogenutils"
 )
 
 var (

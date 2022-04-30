@@ -8,9 +8,9 @@ import (
 	"io/fs"
 	"os"
 
-	"github.com/ppenguin/filetype"
+	"github.com/Rainc1oud/filetype"
 
-	"github.com/ppenguin/filetypestats/types"
+	"github.com/Rainc1oud/filetypestats/types"
 )
 
 func getFTStat(path string) (*types.FTypeStat, error) {
