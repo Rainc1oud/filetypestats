@@ -8,7 +8,13 @@ require (
 	github.com/karrick/godirwalk v1.16.1
 	github.com/mattn/go-sqlite3 v1.14.12
 	github.com/rjeczalik/notify v0.9.2
+	github.com/stretchr/testify v1.7.1
 	golang.org/x/sys v0.0.0-20220429233432-b5fbb4746d32
 )
 
-require gopkg.in/yaml.v2 v2.4.0 // indirect
+require (
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+)
