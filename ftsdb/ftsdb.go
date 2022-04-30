@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Rainc1oud/filetypestats/types"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/ppenguin/filetypestats/types"
 )
 
 // file categories are added when encountered, no need to hard-code and/or init in the DB

@@ -3,8 +3,8 @@ package treestatsquery
 import (
 	"fmt"
 
-	"github.com/ppenguin/filetypestats/ftsdb"
-	"github.com/ppenguin/filetypestats/types"
+	"github.com/Rainc1oud/filetypestats/ftsdb"
+	"github.com/Rainc1oud/filetypestats/types"
 )
 
 // query functions for the file info DB generated and maintained by TreeStatsWatcher
