@@ -21,3 +21,5 @@ testcli
 .tmp/
 build/
 .vscode/
+
+.direnv/
