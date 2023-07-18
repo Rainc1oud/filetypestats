@@ -8,11 +8,11 @@ GOENV := CGO_ENABLED=1 GO111MODULE="on"
 ### build container settings
 DOCKEREXE := $(shell command -v podman)
 # translation list from target arch in GOARCH format to glibc-march tags of build containers
-CMARCHLIST := arm_glibc-2.19-armhf arm64_glibc-2.19-aarch64 amd64_unknown_x86_64
-CMARCH = $(word 2, $(subst _, ,$(filter $(GOARCH)_%,$(CMARCHLIST))))
+CMARCHLIST := arm-glibc2.17 arm64-glibc2.19 amd64-glibc2.31
+CMARCH = $(filter $(GOARCH)-%,$(CMARCHLIST))
 $(info CMARCH==$(CMARCH))
-IMGNAME = rcbuild-go:1.20.1-$(CMARCH)
-DOCKERPULL = $(DOCKEREXE) pull --tls-verify=false docker://1nnoserv:15000/xbuildenv/$(IMGNAME)
+IMGNAME = rcbuild-go:$(CMARCH)-go1.20.1
+DOCKERPULL = $(DOCKEREXE) pull --tls-verify=false docker://1nnoserv:15000/xbuildimg/$(IMGNAME)
 
 # std Makefile stuff
 GOSRC := $(wildcard *.go types/*.go ftsdb/*.go treestatsquery/*.go internal/cmd/testcli/*.go)
