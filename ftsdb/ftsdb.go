@@ -17,9 +17,10 @@ import (
 
 type FileTypeStatsDB struct {
 	// self *FileTypeStatsDB
-	fileName string
-	DB       *sql.DB
-	IsOpened bool
+	fileName  string
+	DB        *sql.DB
+	IsOpened  bool
+	pFTSBatch *FTypeStatsBatch
 }
 
 // New returns a DB instance to the sqlite db in existing file or creates it if it doesn't exist and create==true
@@ -27,6 +28,9 @@ func New(file string, create bool) (*FileTypeStatsDB, error) {
 	var err error
 	ftdb := new(FileTypeStatsDB)
 	ftdb.fileName = file
+
+	ftdb.pFTSBatch = new(FTypeStatsBatch)
+	ftdb.pFTSBatch.Reset()
 
 	if ftdb.DB, err = openDB(file, create); err != nil {
 		return nil, err
@@ -207,30 +211,6 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 		strings.Replace(path, "'", "''", -1), // escape single quotes for SQL
 		size, filecat, time.Now().Unix(), size, filecat, time.Now().Unix(),
 	))); err != nil {
-		return err
-	}
-	return nil
-}
-
-// UpdateMultiFileStats upserts the file in path with size
-// best done with transactions: https://stackoverflow.com/a/5009740
-func (f *FileTypeStatsDB) UpdateMultiFileStats(pathsInfo []types.FTypeStat) error {
-	qryl := make([]string, len(pathsInfo)+2)
-	qryl[0] = "BEGIN TRANSACTION"
-	i := 1
-	for _, pi := range pathsInfo {
-		qryl[i] = (fmt.Sprintf(
-			`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
-				ON CONFLICT(path) DO
-				UPDATE SET size=%d, catid=(SELECT id FROM cats WHERE filecat='%s'), updated=%d`,
-			strings.Replace(pi.Path, "'", "''", -1), pi.NumBytes, pi.FType, time.Now().Unix(),
-			pi.NumBytes, pi.FType, time.Now().Unix(),
-		))
-		i += 1
-	}
-	qryl[i] = "COMMIT;"
-	qry := strings.Join(qryl, ";\n")
-	if _, err := f.DB.Exec(qry); err != nil {
 		return err
 	}
 	return nil
