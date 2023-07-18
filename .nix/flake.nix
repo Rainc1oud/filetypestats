@@ -1,9 +1,8 @@
 {
-  description = "go shell";
+  description = "go devShell";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    # nixpkgs.url = "github:NixOS/nixpkgs/da2ae6e41e5787f50b75ff2cf521057ab44d504e";
+    nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
