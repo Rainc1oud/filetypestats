@@ -1,5 +1,11 @@
 # `filetypestats`
 
+## About
+
+This internal gitlab repo is publicly mirrored on [github.com/Rainc1oud](https://github.com/Rainc1oud/filetypestats).
+
+`filetypestats` scans directories to index all files into an `sqlite` database, which can then be queried using globs to get summary statistics about type and size.
+
 ## Background
 
 *TODO* update
