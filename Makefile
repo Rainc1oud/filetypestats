@@ -11,7 +11,7 @@ DOCKEREXE := $(shell command -v podman)
 CMARCHLIST := arm_glibc-2.19-armhf arm64_glibc-2.19-aarch64 amd64_unknown_x86_64
 CMARCH = $(word 2, $(subst _, ,$(filter $(GOARCH)_%,$(CMARCHLIST))))
 $(info CMARCH==$(CMARCH))
-IMGNAME = rcbuild-go:1.16.8-$(CMARCH)
+IMGNAME = rcbuild-go:1.20.1-$(CMARCH)
 DOCKERPULL = $(DOCKEREXE) pull --tls-verify=false docker://1nnoserv:15000/xbuildenv/$(IMGNAME)
 
 # std Makefile stuff
