@@ -30,27 +30,24 @@ clean:
 test:
 	go test -v ./...
 
+# catchall mkdir
+%/:
+	mkdir -p $@
+
 .PHONY: testcli
 testcli: build/$(BPFX)/testcli
 build/linux-amd64/testcli: internal/cmd/testcli/testcli.go $(GOSRC)
 	$(GOENV) go build -v -o $@ $<
-build/linux-arm/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/testcli.go $(GOSRC)
+build/linux-%/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/testcli.go $(GOSRC) | build/ .tmp/%/
 	$(DOCKERPULL)
-	[[ -d "$(CURDIR)/build" ]] || mkdir -p "$(CURDIR)/build"
 	$(DOCKEREXE) run --rm \
 		-v $(CURDIR):/buildroot \
 		-v $(CURDIR)/build:/build/ \
+		-v $(CURDIR)/.tmp/$*:/gotmp \
 		-e GOPROXY \
 		-e GONOSUMDB \
-		-w /buildroot \
-		$(IMGNAME) bash -c '. /etc/environment; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
-build/linux-arm64/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/testcli.go $(GOSRC)
-	$(DOCKERPULL)
-	[[ -d "$(CURDIR)/build" ]] || mkdir -p "$(CURDIR)/build"
-	$(DOCKEREXE) run --rm \
-		-v $(CURDIR):/buildroot \
-		-v $(CURDIR)/build:/build/ \
-		-e GOPROXY \
-		-e GONOSUMDB \
+		-e GOMODCACHE="/gotmp/.gomodcache/pkg/mod" \
+		-e GOCACHE="/gotmp/.gocache/go-build" \
+		-e GOPATH="/gotmp/.go" \
 		-w /buildroot \
 		$(IMGNAME) bash -c '. /etc/environment; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
