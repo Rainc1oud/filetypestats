@@ -12,8 +12,8 @@ import (
 )
 
 // file categories are added when encountered, no need to hard-code and/or init in the DB
-// TODO: somehow the categories seem not to cover all posible types, this might be an issue with h2non/filetype?
-// var FileCategories = func() []string { return []string{"Audio", "Video", "Image", "Application", "Other"} }
+// => actually not such a good idea, because it forces us to do a "selsert" for every DB mutation, which is expensive!
+// So: init the filetypes table when creating the DB
 
 type FileTypeStatsDB struct {
 	// self *FileTypeStatsDB
@@ -81,6 +81,34 @@ func (f *FileTypeStatsDB) initDB() error {
 	if err := f.createTables(); err != nil {
 		return err
 	}
+
+	if err := f.initCats(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (f *FileTypeStatsDB) initCats() error {
+	cats := types.FClassNames()
+	qryl := make([]string, len(cats)+2)
+	qryl[0] = "BEGIN TRANSACTION"
+	i := 1
+	for _, c := range cats {
+		qryl[i] = fmt.Sprintf(
+			`INSERT INTO cats(filecat) VALUES('%s')
+				ON CONFLICT(filecat) DO NOTHING`,
+			c,
+		)
+		i = i + 1
+	}
+	qryl[i] = "COMMIT;"
+	qry := strings.Join(qryl, ";\n")
+
+	if _, err := f.DB.Exec(qry); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -182,6 +210,30 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, %d, %d)
 			ON CONFLICT(path) DO
 			UPDATE SET size=%d, catid=%d, updated=%d`, path, size, catid, time.Now().Unix(), size, catid, time.Now().Unix()))); err != nil {
+		return err
+	}
+	return nil
+}
+
+// UpdateMultiFileStats upserts the file in path with size
+// best done with transactions: https://stackoverflow.com/a/5009740
+func (f *FileTypeStatsDB) UpdateMultiFileStats(pathsInfo *[]types.FTypeStat) error {
+	qryl := make([]string, len(*pathsInfo)+2)
+	qryl[0] = "TRANSACTION BEGIN"
+	i := 1
+	for _, pi := range *pathsInfo {
+		qryl[i] = (fmt.Sprintf(
+			`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
+				ON CONFLICT(path) DO
+				UPDATE SET size=%d, catid=(SELECT id FROM cats WHERE filecat='%s'), updated=%d`,
+			strings.Replace(pi.Path, "'", "''", -1), pi.NumBytes, pi.FType, time.Now().Unix(),
+			pi.NumBytes, pi.FType, time.Now().Unix(),
+		))
+		i = i + 1
+	}
+	qryl[i] = "COMMIT;"
+	qry := strings.Join(qryl, ";\n")
+	if _, err := f.DB.Exec(qry); err != nil {
 		return err
 	}
 	return nil

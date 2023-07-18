@@ -23,3 +23,5 @@ build/
 .vscode/
 
 .direnv/
+*.sqlite
+*.sqlite-journal
