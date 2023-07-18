@@ -1,15 +1,15 @@
 module github.com/Rainc1oud/filetypestats
 
-go 1.17
+go 1.20
 
 require (
 	github.com/Rainc1oud/filetype v1.1.4-0.20220430091518-a87dd4ed26b5
-	github.com/Rainc1oud/gogenutils v0.3.1
+	github.com/Rainc1oud/gogenutils v0.4.0
 	github.com/karrick/godirwalk v1.17.0
-	github.com/mattn/go-sqlite3 v1.14.15
-	github.com/rjeczalik/notify v0.9.2
+	github.com/mattn/go-sqlite3 v1.14.17
+	github.com/rjeczalik/notify v0.9.3
 	github.com/stretchr/testify v1.8.0
-	golang.org/x/sys v0.0.0-20220928140112-f11e5e49a4ec
+	golang.org/x/sys v0.10.0
 )
 
 require (
