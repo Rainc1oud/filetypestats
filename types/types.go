@@ -8,12 +8,18 @@ import (
 
 var (
 	// "const" string slice to enforce the field order for pretty printing
-	FTypeNames = func() []string { return []string{"dir", "audio", "application", "image", "other", "total"} }
+	FTypeNames  = func() []string { return []string{"dir", "audio", "application", "image", "other", "total"} }
+	FClassNames = func() []string {
+		return []string{"dir", "other", "application", "archive", "audio", "document", "image", "video"}
+	}
+	// TODO: somehow the categories seem not to cover all posible types, this might be an issue with h2non/filetype?
+	// var FileCategories = func() []string { return []string{"Audio", "Video", "Image", "Application", "Other"} }
 )
 
 // FTypeStat contains:
-//		either a summary for one filetype (Path is wildcard and FileCount >= 1)
-//		or the type and size of one file (Path is regular file and FileCount == 1)
+//
+//	either a summary for one filetype (Path is wildcard and FileCount >= 1)
+//	or the type and size of one file (Path is regular file and FileCount == 1)
 type FTypeStat struct {
 	Path      string
 	FType     string

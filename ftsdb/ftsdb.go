@@ -12,14 +12,15 @@ import (
 )
 
 // file categories are added when encountered, no need to hard-code and/or init in the DB
-// TODO: somehow the categories seem not to cover all posible types, this might be an issue with h2non/filetype?
-// var FileCategories = func() []string { return []string{"Audio", "Video", "Image", "Application", "Other"} }
+// => actually not such a good idea, because it forces us to do a "selsert" for every DB mutation, which is expensive!
+// So: init the filetypes table when creating the DB
 
 type FileTypeStatsDB struct {
 	// self *FileTypeStatsDB
-	fileName string
-	DB       *sql.DB
-	IsOpened bool
+	fileName  string
+	DB        *sql.DB
+	IsOpened  bool
+	pFTSBatch *FTypeStatsBatch
 }
 
 // New returns a DB instance to the sqlite db in existing file or creates it if it doesn't exist and create==true
@@ -27,6 +28,9 @@ func New(file string, create bool) (*FileTypeStatsDB, error) {
 	var err error
 	ftdb := new(FileTypeStatsDB)
 	ftdb.fileName = file
+
+	ftdb.pFTSBatch = new(FTypeStatsBatch)
+	ftdb.pFTSBatch.Reset()
 
 	if ftdb.DB, err = openDB(file, create); err != nil {
 		return nil, err
@@ -81,6 +85,34 @@ func (f *FileTypeStatsDB) initDB() error {
 	if err := f.createTables(); err != nil {
 		return err
 	}
+
+	if err := f.initCats(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (f *FileTypeStatsDB) initCats() error {
+	cats := types.FClassNames()
+	qryl := make([]string, len(cats)+2)
+	qryl[0] = "BEGIN TRANSACTION"
+	i := 1
+	for _, c := range cats {
+		qryl[i] = fmt.Sprintf(
+			`INSERT INTO cats(filecat) VALUES('%s')
+				ON CONFLICT(filecat) DO NOTHING`,
+			c,
+		)
+		i += 1
+	}
+	qryl[i] = "COMMIT;"
+	qry := strings.Join(qryl, ";\n")
+
+	if _, err := f.DB.Exec(qry); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -171,17 +203,14 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 
 // UpdateFileStats upserts the file in path with size
 func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) error {
-	catid, err := f.selsertIdText("cats", "filecat", filecat)
-	if err != nil {
-		return err
-	}
 	// upsert file type stats for dir
-	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
-
 	if _, err := f.DB.Exec((fmt.Sprintf(
-		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, %d, %d)
+		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
 			ON CONFLICT(path) DO
-			UPDATE SET size=%d, catid=%d, updated=%d`, path, size, catid, time.Now().Unix(), size, catid, time.Now().Unix()))); err != nil {
+			UPDATE SET size=%d, catid=(SELECT id FROM cats WHERE filecat='%s'), updated=%d`,
+		strings.Replace(path, "'", "''", -1), // escape single quotes for SQL
+		size, filecat, time.Now().Unix(), size, filecat, time.Now().Unix(),
+	))); err != nil {
 		return err
 	}
 	return nil
