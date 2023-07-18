@@ -21,6 +21,7 @@ testcli
 .tmp/
 build/
 .vscode/
+!.vscode/launch.json
 
 .direnv/
 *.sqlite
