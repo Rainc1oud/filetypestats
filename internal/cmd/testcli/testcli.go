@@ -128,9 +128,9 @@ func printstats(ftstats types.FileTypeStats) {
 	}
 }
 
-// TODO: consider giving ftsdb a singleton instance for the db connection
+// getDB returns a connection to the DB file (reuses an exising connection to the same file or overwrites the connection if the filename is different)
 func getDB(dbfile string) *ftsdb.FileTypeStatsDB {
-	if dbinstance.DbFileName() == dbfile {
+	if dbinstance != nil && dbinstance.DbFileName() == dbfile {
 		return dbinstance
 	}
 
