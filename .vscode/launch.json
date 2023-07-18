@@ -10,7 +10,7 @@
             "request": "launch",
             "mode": "debug",
             "program": "internal/cmd/testcli/testcli.go",
-            "args":["--db=test.sqlite","--dirs=/home/jeroen/devel/*", "scan"]
+            "args":["--db=test0.sqlite","--dirs=/home/jeroen/devel/g1tlab/r/deploy", "scan"]
         },
         {
             "name": "Launch Package",

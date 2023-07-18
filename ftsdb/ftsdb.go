@@ -100,7 +100,7 @@ func (f *FileTypeStatsDB) initCats() error {
 				ON CONFLICT(filecat) DO NOTHING`,
 			c,
 		)
-		i = i + 1
+		i += 1
 	}
 	qryl[i] = "COMMIT;"
 	qry := strings.Join(qryl, ";\n")
@@ -214,11 +214,11 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 
 // UpdateMultiFileStats upserts the file in path with size
 // best done with transactions: https://stackoverflow.com/a/5009740
-func (f *FileTypeStatsDB) UpdateMultiFileStats(pathsInfo *[]types.FTypeStat) error {
-	qryl := make([]string, len(*pathsInfo)+2)
-	qryl[0] = "TRANSACTION BEGIN"
+func (f *FileTypeStatsDB) UpdateMultiFileStats(pathsInfo []types.FTypeStat) error {
+	qryl := make([]string, len(pathsInfo)+2)
+	qryl[0] = "BEGIN TRANSACTION"
 	i := 1
-	for _, pi := range *pathsInfo {
+	for _, pi := range pathsInfo {
 		qryl[i] = (fmt.Sprintf(
 			`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
 				ON CONFLICT(path) DO
@@ -226,7 +226,7 @@ func (f *FileTypeStatsDB) UpdateMultiFileStats(pathsInfo *[]types.FTypeStat) err
 			strings.Replace(pi.Path, "'", "''", -1), pi.NumBytes, pi.FType, time.Now().Unix(),
 			pi.NumBytes, pi.FType, time.Now().Unix(),
 		))
-		i = i + 1
+		i += 1
 	}
 	qryl[i] = "COMMIT;"
 	qry := strings.Join(qryl, ";\n")

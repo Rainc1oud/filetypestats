@@ -54,7 +54,7 @@ func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 
 			if de.IsDir() && os.Getenv("NODBFUN") == "" {
 				ftype = "dir"
-				fdb.UpdateFileStats(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
+				return pFTSBatch.GetInstance().Append(osPathname+"/", ftype, 0, fdb) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
@@ -62,8 +62,7 @@ func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 						return nil
 					}
 					if ftype, err = filetype.FileClass(osPathname); err == nil && os.Getenv("NODBFUN") == "" {
-						fdb.UpdateFileStats(osPathname, ftype, uint64(fi.Size()))
-						return nil
+						return pFTSBatch.GetInstance().Append(osPathname, ftype, uint64(fi.Size()), fdb)
 					}
 				}
 			}
@@ -81,5 +80,8 @@ func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 	}); err != nil {
 		return err
 	}
+
+	pFTSBatch.GetInstance().Commit(fdb) // commit any "in-flight" batch
+
 	return nil
 }
