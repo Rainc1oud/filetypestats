@@ -52,16 +52,13 @@ func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 				ftype string
 			)
 
-			if de.IsDir() && os.Getenv("NODBFUN") == "" {
+			if de.IsDir() {
 				ftype = "dir"
 				return fdb.UpdateFileStatsMulti(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
-					if os.Getenv("NOFILECLASS") != "" {
-						return nil
-					}
-					if ftype, err = filetype.FileClass(osPathname); err == nil && os.Getenv("NODBFUN") == "" {
+					if ftype, err = filetype.FileClass(osPathname); err == nil {
 						return fdb.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()))
 					}
 				}
