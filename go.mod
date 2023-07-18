@@ -2,6 +2,9 @@ module github.com/Rainc1oud/filetypestats
 
 go 1.20
 
+replace (
+	github.com/Rainc1oud/filetypestats => ./
+)
 require (
 	github.com/Rainc1oud/filetype v1.1.4-0.20220430091518-a87dd4ed26b5
 	github.com/Rainc1oud/gogenutils v0.4.0
