@@ -52,7 +52,7 @@ func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 				ftype string
 			)
 
-			if de.IsDir() && os.Getenv("NODBFUN") != "" {
+			if de.IsDir() && os.Getenv("NODBFUN") == "" {
 				ftype = "dir"
 				fdb.UpdateFileStats(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
