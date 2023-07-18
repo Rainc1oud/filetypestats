@@ -199,17 +199,14 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 
 // UpdateFileStats upserts the file in path with size
 func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) error {
-	catid, err := f.selsertIdText("cats", "filecat", filecat)
-	if err != nil {
-		return err
-	}
 	// upsert file type stats for dir
-	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
-
 	if _, err := f.DB.Exec((fmt.Sprintf(
-		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, %d, %d)
+		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
 			ON CONFLICT(path) DO
-			UPDATE SET size=%d, catid=%d, updated=%d`, path, size, catid, time.Now().Unix(), size, catid, time.Now().Unix()))); err != nil {
+			UPDATE SET size=%d, catid=(SELECT id FROM cats WHERE filecat='%s'), updated=%d`,
+		strings.Replace(path, "'", "''", -1), // escape single quotes for SQL
+		size, filecat, time.Now().Unix(), size, filecat, time.Now().Unix(),
+	))); err != nil {
 		return err
 	}
 	return nil
