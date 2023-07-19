@@ -93,7 +93,7 @@ func show(dirs []string, file string) {
 	defer fdb.Close()
 
 	for _, d := range dirs {
-		fstats, err := fdb.FTStatsSum(dirs)
+		fstats, err := fdb.FTStatsSum([]string{d})
 		if err != nil {
 			exiterr(err)
 		}
