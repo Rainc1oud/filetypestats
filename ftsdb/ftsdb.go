@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Rainc1oud/filetypestats/types"
+	"github.com/Rainc1oud/filetypestats/utils"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -321,6 +322,8 @@ func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error)
 // pathsWherePredicate returns the WHERE clause part selecting the paths according to input dir list
 // we'll be using GLOB, translated from the path list to satisfy behaviour as described for FTStatsSum()
 func (f *FileTypeStatsDB) pathsWherePredicate(paths []string) string {
+	// we can (significantly) optimise the query by removing ineffective paths (duplicates and children of recursive globs) first
+	paths = utils.OptimizePathsGlob(&paths)
 	pred := make([]string, len(paths))
 	for i, d := range paths {
 		d = strings.Replace(d, "'", "''", -1)                          // escape single quotes for SQL

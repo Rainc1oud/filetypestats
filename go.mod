@@ -2,12 +2,11 @@ module github.com/Rainc1oud/filetypestats
 
 go 1.20
 
-replace (
-	github.com/Rainc1oud/filetypestats => ./
-)
+replace github.com/Rainc1oud/filetypestats => ./
+
 require (
 	github.com/Rainc1oud/filetype v1.1.4-0.20220430091518-a87dd4ed26b5
-	github.com/Rainc1oud/gogenutils v0.4.0
+	github.com/Rainc1oud/gogenutils v0.4.1-0.20230718134219-265f235c516a
 	github.com/karrick/godirwalk v1.17.0
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/rjeczalik/notify v0.9.3
