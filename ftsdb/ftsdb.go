@@ -141,7 +141,7 @@ func (f *FileTypeStatsDB) createTables() error {
 	return nil
 }
 
-// FTStatsSum returns the summary FileTypeStats for the given paths as a map of FTypeStat per File Type
+// Paths are selected according to the following rules:
 // Paths can be files or directories. The summary is counted like this for the respective path format
 // path="/my/dir/*" => count /my/dir/ and below recursively
 // path="/my/dir*/*" => count all dirs matching /my/dir*/ and below recursively
@@ -149,6 +149,37 @@ func (f *FileTypeStatsDB) createTables() error {
 // path="/my/dir*/" => count ony the contents of dirs matching /my/dir*/
 // path="/my/file" => count only "/my/file"
 // path="/my/file*" => count all files matching "/my/file*"
+
+// FTDumpPaths returns all paths and raw info selected by the paths argument
+func (f *FileTypeStatsDB) FTDumpPaths(paths []string) (*[]types.FTypeStat, error) {
+	wp := f.pathsWherePredicate(paths)
+	fts := make([]types.FTypeStat, 0)
+	rs, err := f.DB.Query(fmt.Sprintf(
+		`SELECT fileinfo.path AS Path, cats.filecat AS Category, fileinfo.size AS Size FROM fileinfo,cats
+			WHERE fileinfo.catid=cats.id AND (%s)`,
+		wp,
+	))
+	if err != nil {
+		return &fts, err
+	}
+	defer rs.Close()
+
+	var (
+		path     string
+		filecat  string
+		filesize uint64
+	)
+
+	for rs.Next() {
+		if err := rs.Scan(&path, &filecat, &filesize); err != nil {
+			return &fts, err
+		}
+		fts = append(fts, types.FTypeStat{Path: path, FType: filecat, NumBytes: filesize, FileCount: 0})
+	}
+	return &fts, nil
+}
+
+// FTStatsSum returns the summary FileTypeStats for the given paths as a map of FTypeStat per File Type
 func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error) {
 	wp := f.pathsWherePredicate(paths)
 	ftstats := make(types.FileTypeStats)

@@ -40,8 +40,10 @@ func main() {
 		scan(scandirs, *dbfile)
 	case "show":
 		show(scandirs, *dbfile)
-	case "dump":
+	case "summary":
 		summary(scandirs, *dbfile)
+	case "dump":
+		dump(scandirs, *dbfile)
 	case "watch":
 		watch(scandirs, *dbfile)
 	default:
@@ -51,11 +53,12 @@ func main() {
 
 func usage() {
 	fmt.Printf(
-		"Usage: %s [ --dirs=dir1,dir2 ] [ --db=scandb.sqlite ] [ scan | show | dump ]\n"+
+		"Usage: %s [ --dirs=dir1,dir2 ] [ --db=scandb.sqlite ] [ scan | show | summary | dump ]\n"+
 			"\tscan: scans all dirs given recursively and stores statistics per dir in scandb\n"+
 			"\tshow: gets the totals from scandb for the given dirs.\n"+
 			"\t\tTo show totals under a dir, use the special form --dir='/dir/to/*' (remember quoting if necessary)\n"+
 			"\tsummary: show sum totals for all selected dirs\n"+
+			"\tdump: dump the paths and info for the selected dirs\n"+
 			"\twatch: watch selected dirs for modification (blocking)\n\nFlags:\n", os.Args[0])
 	flag.PrintDefaults()
 	os.Exit(0)
@@ -111,6 +114,25 @@ func summary(dirs []string, file string) {
 	printstats(fstats)
 }
 
+func dump(dirs []string, file string) {
+	var err error
+	var fdb *ftsdb.FileTypeStatsDB
+
+	ts := time.Now()
+	if fdb, err = ftsdb.New(file, false); err != nil {
+		exiterr(err)
+	}
+	defer fdb.Close()
+
+	flist, err := fdb.FTDumpPaths(dirs)
+	if err != nil {
+		exiterr(err)
+	}
+	te := time.Since(ts)
+	printflist(flist)
+	fmt.Printf("\n\nQuery took %s\n", te)
+}
+
 func watch(dirs []string, file string) {
 	var fts *filetypestats.TreeStatsWatcher
 	var err error
@@ -125,6 +147,13 @@ func printstats(ftstats types.FileTypeStats) {
 	fmt.Printf("%10s: \t%30s %8s \t%5s\n%75s\n", "Type", "Path", "Size", "Count", strings.Repeat("-", 75))
 	for _, catstat := range ftstats {
 		fmt.Printf("%10s: \t%30s (%8s) \t%5d files\n", catstat.FType, catstat.Path, utils.ByteCountSI(catstat.NumBytes), catstat.FileCount)
+	}
+}
+
+func printflist(flist *[]types.FTypeStat) {
+	fmt.Printf("%60s\t%10s\t%10s\t%80s\n", "Path", "Type", "Size", strings.Repeat("-", 75))
+	for _, pathinfo := range *flist {
+		fmt.Printf("%60s\t%10s\t%10s\n", pathinfo.Path, pathinfo.FType, utils.ByteCountSI(pathinfo.NumBytes))
 	}
 }
 
