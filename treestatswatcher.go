@@ -158,6 +158,7 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 		},
 	})
 
+	tsw.ftsDB.CommitBatch() // commit any "in-flight" batch
 	tsw.ftsDB.DeleteOlderThanWithPrefix(tsw.ScanStarted(dir), dir)
 	tsw.ScanFinish(dir)
 
