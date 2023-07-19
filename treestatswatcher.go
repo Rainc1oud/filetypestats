@@ -124,6 +124,9 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 
 	tsw.ScanStart(dir)
 
+	// log.Printf("ScanDir(): starting scan of %q", dir)
+	fmt.Fprintf(os.Stderr, "ScanDir(): starting scan of %q (to database %q)\n", dir, tsw.ftsDB.DbFileName())
+
 	err := godirwalk.Walk(dir, &godirwalk.Options{
 		AllowNonDirectory: true,
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
@@ -135,19 +138,23 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 
 			if de.IsDir() {
 				ftype = "dir"
-				tsw.ftsDB.UpdateFileStatsMulti(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
+				if err := tsw.ftsDB.UpdateFileStatsMulti(osPathname+"/", ftype, 0); err != nil {
+					fmt.Fprintf(os.Stderr, "ScanDir(%q): ERROR: %s\n", dir, err.Error())
+				}
 			} else if de.IsRegular() {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()))
+						if err := tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size())); err != nil {
+							fmt.Fprintf(os.Stderr, "ScanDir(%q): ERROR: %s\n", dir, err.Error())
+						}
 						return nil
 					}
 				}
 			}
 
 			if err != nil {
-				fmt.Fprint(os.Stderr, err.Error())
+				fmt.Fprintf(os.Stderr, "ScanDir(%q): ERROR: %s\n", dir, err.Error())
 			}
 			return nil
 		},
@@ -161,9 +168,14 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 	tsw.ftsDB.DeleteOlderThanWithPrefix(tsw.ScanStarted(dir), dir)
 	tsw.ScanFinish(dir)
 
+	fmt.Fprintf(os.Stderr, "ScanDir(): finished scan of %q (to database %q)\n", dir, tsw.ftsDB.DbFileName())
+
 	if err != nil {
 		return err
 	}
+
+	tsw.ftsDB.CommitBatch() // commit any "in-flight" batch
+
 	return nil
 }
 
