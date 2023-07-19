@@ -36,8 +36,9 @@ type TreeStatsWatcher struct {
 }
 
 // NewTreeStatsWatcher is the top level constructor featuring:
-//  - a recursive watcher and scanner for all files in the given param dirs
-//	- a sqlite DB session (param database: file name)
+//   - a recursive watcher and scanner for all files in the given param dirs
+//   - a sqlite DB session (param database: file name)
+//
 // An instance is always returned, even if an error occurred
 // dirs will be trimmed of trailing suffixes and evaluated recursively
 // If dirs is empty, you can add watches later with AddWatch() or AddDir()
@@ -134,12 +135,12 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 
 			if de.IsDir() {
 				ftype = "dir"
-				tsw.ftsDB.UpdateFileStats(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
+				tsw.ftsDB.UpdateFileStatsMulti(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						tsw.ftsDB.UpdateFileStats(osPathname, ftype, uint64(fi.Size()))
+						tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()))
 						return nil
 					}
 				}
