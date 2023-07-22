@@ -18,12 +18,10 @@ import (
 // So: init the filetypes table when creating the DB
 
 type FileTypeStatsDB struct {
-	// self *FileTypeStatsDB
 	fileName string
 	DB       *sql.DB
 	IsOpened bool
-	// pFTSBatch *FTypeStatsBatch
-	dbmutex sync.Mutex
+	dbmutex  sync.Mutex
 }
 
 // New returns a DB instance to the sqlite db in existing file or creates it if it doesn't exist and create==true
@@ -31,9 +29,6 @@ func New(file string, create bool) (*FileTypeStatsDB, error) {
 	var err error
 	ftdb := new(FileTypeStatsDB)
 	ftdb.fileName = file
-
-	// ftdb.pFTSBatch = new(FTypeStatsBatch)
-	// ftdb.pFTSBatch.Reset()
 
 	if ftdb.DB, err = openDB(file, create); err != nil {
 		return nil, err
