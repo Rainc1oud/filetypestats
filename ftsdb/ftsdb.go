@@ -221,8 +221,8 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 		path = pathN.String
 		fcat = fcatN.String
 		fcatcount = uint(fcatcountN.Int32) // crappy that we don't have sql.NullUInt => will this be a problem???
-		fcatsize = uint64(fcatsizeN.Int64) // crappy that we don't have sql.NullUInt64 => will this be a problem???
-		if len(paths) == 1 {               // the query has specified a single directory pattern, so we use it for the path
+		fcatsize = uint64(fcatsizeN.Int64)
+		if len(paths) == 1 { // the query has specified a single directory pattern, so we use it for the path
 			if fcatcount == 1 && fcat != "total" { // there's only one, so we can take the exact path, except for totals take the input path
 				ftstats[fcat] = &types.FTypeStat{Path: path, FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
 			} else { // use input pattern for path
@@ -254,7 +254,7 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 // if path is a dir the update is recursive
 func (f *FileTypeStatsDB) UpdateFilePath(from, to string) error {
 	from = strings.Replace(from, "'", "''", -1) // escape single quotes for SQL
-	to = strings.Replace(to, "'", "''", -1)     // escape single quotes for SQL
+	to = strings.Replace(to, "'", "''", -1)
 	if _, err := f.DB.Exec((fmt.Sprintf(
 		`UPDATE fileinfo SET path=REPLACE(path, '%s', '%s'), updated=%d;`, from, to, time.Now().Unix()))); err != nil {
 		return err
@@ -284,7 +284,7 @@ func (f *FileTypeStatsDB) DeleteOlderThanWithPrefix(t time.Time, prefix string) 
 
 // DeleteFileStats deletes the file/dir in path, if it's a dir, the delete is recursive
 func (f *FileTypeStatsDB) DeleteFileStats(path string) error {
-	// if we delete "<path>/*" OR "<path>" from the DB, we catch automatically the recursife case if it was a dir and existed, otherwise we delete just the file
+	// if we delete "<path>/*" OR "<path>" from the DB, we catch automatically the recursive case if it was a dir and existed, otherwise we delete just the file
 	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
 
 	if _, err := f.DB.Exec((fmt.Sprintf(

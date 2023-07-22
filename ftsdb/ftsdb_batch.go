@@ -20,7 +20,6 @@ func (f *FileTypeStatsDB) CommitBatch(batchBuffer *types.FTypeStatsBatch) error 
 	if batchBuffer.IsEmpty() {
 		return nil
 	}
-	// fts := f.ftStats[:f.firstFreeIdx-1] // because we need this, it's probably the same effect as pass by value???
 	err := f.upsertFileStatsMulti(batchBuffer)
 	// we flush the buffer after a commit, so the next batch can start
 	// (if there is an error, the data is not saved, which is "acceptable" because an error for an upsert means we couldn't save the data in the DB anyway)
@@ -49,7 +48,7 @@ func (f *FileTypeStatsDB) upsertFileStatsMulti(batchBuffer *types.FTypeStatsBatc
 	qryl[i] = "COMMIT;"
 	qry := strings.Join(qryl, ";\n")
 
-	f.dbmutex.Lock()
+	f.dbmutex.Lock() // make sure the transaction block in the query is executed exclusive
 	defer f.dbmutex.Unlock()
 
 	if _, err := f.DB.Exec(qry); err != nil {
