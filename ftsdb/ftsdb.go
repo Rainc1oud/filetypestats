@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Rainc1oud/filetypestats/types"
@@ -18,10 +19,11 @@ import (
 
 type FileTypeStatsDB struct {
 	// self *FileTypeStatsDB
-	fileName  string
-	DB        *sql.DB
-	IsOpened  bool
-	pFTSBatch *FTypeStatsBatch
+	fileName string
+	DB       *sql.DB
+	IsOpened bool
+	// pFTSBatch *FTypeStatsBatch
+	dbmutex sync.Mutex
 }
 
 // New returns a DB instance to the sqlite db in existing file or creates it if it doesn't exist and create==true
@@ -30,8 +32,8 @@ func New(file string, create bool) (*FileTypeStatsDB, error) {
 	ftdb := new(FileTypeStatsDB)
 	ftdb.fileName = file
 
-	ftdb.pFTSBatch = new(FTypeStatsBatch)
-	ftdb.pFTSBatch.Reset()
+	// ftdb.pFTSBatch = new(FTypeStatsBatch)
+	// ftdb.pFTSBatch.Reset()
 
 	if ftdb.DB, err = openDB(file, create); err != nil {
 		return nil, err

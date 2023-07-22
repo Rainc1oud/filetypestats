@@ -12,6 +12,7 @@ import (
 	"github.com/Rainc1oud/filetype"
 	"github.com/Rainc1oud/filetypestats/ftsdb"
 	"github.com/Rainc1oud/filetypestats/notifywatch"
+	"github.com/Rainc1oud/filetypestats/types"
 	"github.com/Rainc1oud/filetypestats/utils"
 	ggu "github.com/Rainc1oud/gogenutils"
 	"github.com/karrick/godirwalk"
@@ -20,6 +21,8 @@ import (
 )
 
 var defaultNotifyEvents = []notify.Event{notify.InCreate, notify.InModify, notify.InMovedFrom, notify.InMovedTo, notify.Remove}
+
+const pathInfoBatchSize = 200
 
 type tMoveInfo struct {
 	From string
@@ -33,6 +36,7 @@ type TreeStatsWatcher struct {
 	ftsDB            *ftsdb.FileTypeStatsDB
 	eventHandler     notifywatch.NotifyHandlerFun
 	wg               *sync.WaitGroup
+	batchBuffer      *types.FTypeStatsBatch // as TSW attribute and not instantiated in e.g. Scan() because it's probably less load on GC
 }
 
 // NewTreeStatsWatcher is the top level constructor featuring:
@@ -50,6 +54,7 @@ func NewTreeStatsWatcher(dirs []string, dbconn *ftsdb.FileTypeStatsDB) (*TreeSta
 		dbconn,
 		nil,
 		&sync.WaitGroup{},
+		types.NewFTypeStatsBatch(pathInfoBatchSize),
 	}
 	tsw.eventHandler = tsw.onFileChanged // set default event handler
 	err := tsw.AddWatch(dirs...)
@@ -135,12 +140,12 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 
 			if de.IsDir() {
 				ftype = "dir"
-				tsw.ftsDB.UpdateFileStatsMulti(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
+				tsw.ftsDB.UpdateFileStatsMulti(osPathname+"/", ftype, 0, tsw.batchBuffer) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()))
+						tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()), tsw.batchBuffer)
 						return nil
 					}
 				}
@@ -158,7 +163,7 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 		},
 	})
 
-	tsw.ftsDB.CommitBatch() // commit any "in-flight" batch
+	tsw.ftsDB.CommitBatch(tsw.batchBuffer) // commit any "in-flight" batch
 	tsw.ftsDB.DeleteOlderThanWithPrefix(tsw.ScanStarted(dir), dir)
 	tsw.ScanFinish(dir)
 

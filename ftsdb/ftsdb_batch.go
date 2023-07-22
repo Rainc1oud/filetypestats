@@ -8,42 +8,31 @@ import (
 	"github.com/Rainc1oud/filetypestats/types"
 )
 
-const piBatchSize = 200
-
-type FTypeStatsBatch struct {
-	firstFreeIdx int
-	ftStats      []types.FTypeStat
-}
-
-func (fb *FTypeStatsBatch) Reset() {
-	fb.firstFreeIdx = 0
-	fb.ftStats = make([]types.FTypeStat, piBatchSize)
-}
-
-func (f *FileTypeStatsDB) UpdateFileStatsMulti(path, filecat string, size uint64) error {
-	f.pFTSBatch.ftStats[f.pFTSBatch.firstFreeIdx] = types.FTypeStat{Path: path, FType: filecat, NumBytes: size}
-	f.pFTSBatch.firstFreeIdx += 1
-	if f.pFTSBatch.firstFreeIdx >= piBatchSize-1 {
-		return f.CommitBatch()
+func (f *FileTypeStatsDB) UpdateFileStatsMulti(path, filecat string, size uint64, batchBuffer *types.FTypeStatsBatch) error {
+	var err error
+	if batchBuffer.Push(types.FTypeStat{Path: path, FType: filecat, NumBytes: size}) {
+		err = f.CommitBatch(batchBuffer) // commit resets firstFreeIndex and empties the batch buffer
 	}
-	return nil
+	return err
 }
 
-func (f *FileTypeStatsDB) CommitBatch() error {
-	if f.pFTSBatch.firstFreeIdx < 1 {
+func (f *FileTypeStatsDB) CommitBatch(batchBuffer *types.FTypeStatsBatch) error {
+	if batchBuffer.IsEmpty() {
 		return nil
 	}
 	// fts := f.ftStats[:f.firstFreeIdx-1] // because we need this, it's probably the same effect as pass by value???
-	err := f.upsertFileStatsMulti(f.pFTSBatch.ftStats[:f.pFTSBatch.firstFreeIdx-1])
-	if err == nil { // we flush the buffer after a successful commit, so the next batch can start
-		f.pFTSBatch.Reset()
-	}
+	err := f.upsertFileStatsMulti(batchBuffer)
+	// we flush the buffer after a commit, so the next batch can start
+	// (if there is an error, the data is not saved, which is "acceptable" because an error for an upsert means we couldn't save the data in the DB anyway)
+	batchBuffer.Reset()
+
 	return err
 }
 
 // upsertFileStatsMulti upserts the file in path with size
 // best done with transactions: https://stackoverflow.com/a/5009740
-func (f *FileTypeStatsDB) upsertFileStatsMulti(pathsInfo []types.FTypeStat) error {
+func (f *FileTypeStatsDB) upsertFileStatsMulti(batchBuffer *types.FTypeStatsBatch) error {
+	pathsInfo := batchBuffer.AllElem()
 	qryl := make([]string, len(pathsInfo)+2)
 	qryl[0] = "BEGIN TRANSACTION"
 	i := 1
@@ -59,8 +48,13 @@ func (f *FileTypeStatsDB) upsertFileStatsMulti(pathsInfo []types.FTypeStat) erro
 	}
 	qryl[i] = "COMMIT;"
 	qry := strings.Join(qryl, ";\n")
+
+	f.dbmutex.Lock()
+	defer f.dbmutex.Unlock()
+
 	if _, err := f.DB.Exec(qry); err != nil {
 		return err
 	}
+
 	return nil
 }

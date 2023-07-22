@@ -43,6 +43,8 @@ func WalkFileTypeStatsDB(scanDirs []string, dbfile string) (types.FileTypeStats,
 
 func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 
+	piBuf := types.NewFTypeStatsBatch(pathInfoBatchSize)
+
 	if err := godirwalk.Walk(scanRoot, &godirwalk.Options{
 		AllowNonDirectory: true,
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
@@ -54,12 +56,12 @@ func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 
 			if de.IsDir() {
 				ftype = "dir"
-				return fdb.UpdateFileStatsMulti(osPathname+"/", ftype, 0) // add / to make filtering more consistent in SELECT queries
+				return fdb.UpdateFileStatsMulti(osPathname+"/", ftype, 0, piBuf) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						return fdb.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()))
+						return fdb.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()), piBuf)
 					}
 				}
 			}
@@ -78,7 +80,7 @@ func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 		return err
 	}
 
-	fdb.CommitBatch() // commit any "in-flight" batch
+	fdb.CommitBatch(piBuf) // commit any "in-flight" batch
 
 	return nil
 }

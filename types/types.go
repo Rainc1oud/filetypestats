@@ -40,3 +40,43 @@ func (f *FileTypeStats) ToString() string {
 	}
 	return s
 }
+
+// FTypeStatsBatch is a "stack like" buffer with a pointer to the next free slot
+type FTypeStatsBatch struct {
+	cap      int
+	lastElem int
+	ftStats  []FTypeStat
+}
+
+func NewFTypeStatsBatch(capacity int) *FTypeStatsBatch {
+	return &FTypeStatsBatch{
+		cap:      capacity,
+		lastElem: 0,
+		ftStats:  make([]FTypeStat, capacity),
+	}
+}
+
+func (fb *FTypeStatsBatch) IsFull() bool {
+	return fb.lastElem >= fb.cap-2
+}
+
+func (fb *FTypeStatsBatch) IsEmpty() bool {
+	return fb.lastElem < 1
+}
+
+// Push pushes an item in the buffer and returns false if the buffer is full
+// (For convenience false will still handle the current pushif possible, it's just the last one possible, so flushing should be handled by the user)
+func (fb *FTypeStatsBatch) Push(elem FTypeStat) bool {
+	fb.lastElem += 1
+	fb.ftStats[fb.lastElem] = elem
+	return fb.IsFull()
+}
+
+func (fb *FTypeStatsBatch) AllElem() []FTypeStat {
+	return fb.ftStats[:fb.lastElem]
+}
+
+func (fb *FTypeStatsBatch) Reset() {
+	fb.lastElem = 0
+	fb.ftStats = make([]FTypeStat, fb.cap)
+}
