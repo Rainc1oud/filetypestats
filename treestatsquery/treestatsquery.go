@@ -35,7 +35,7 @@ func FTStatsSum(dbfile string, paths []string) (types.FileTypeStats, error) {
 func FTStatsSumDB(dbconn *ftsdb.FileTypeStatsDB, paths []string) (types.FileTypeStats, error) {
 	var err error
 	if dbconn == nil {
-		err = fmt.Errorf("invalid: dbconn==nil")
+		err = fmt.Errorf("invalid: dbconn=nil")
 	} else if !dbconn.IsOpened {
 		err = fmt.Errorf("dbconn is not open")
 	}

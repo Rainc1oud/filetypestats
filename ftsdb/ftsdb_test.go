@@ -9,22 +9,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// func TestTypeCategories(t *testing.T) {
-// 	// var ms = matchers.Matchers
-// 	var mk = matchers.MatcherKeys
-// 	// for _, m := range ms {
-// 	// 	fmt.Printf("key: %v", m)
-// 	// }
-// 	cats := []string{}
-// 	for _, k := range mk {
-// 		fmt.Printf("key: %v", k.MIME.Value)
-// 		if !gogenutils.InSlice(k.MIME.Type, cats) {
-// 			cats = append(cats, k.MIME.Type)
-// 		}
-// 	}
-// 	fmt.Printf("key: %v", cats)
-// }
-
 func TestFileTypeStatsDB_New(t *testing.T) {
 
 	cwd, _ := os.Getwd()
@@ -43,7 +27,7 @@ func TestFileTypeStatsDB_New(t *testing.T) {
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	// fmt.Printf("res: %v\n", res)
+
 	var (
 		id      int
 		filecat string

@@ -5,21 +5,23 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Rainc1oud/filetypestats/types"
+	"github.com/Rainc1oud/filetypestats/utils"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // file categories are added when encountered, no need to hard-code and/or init in the DB
-// TODO: somehow the categories seem not to cover all posible types, this might be an issue with h2non/filetype?
-// var FileCategories = func() []string { return []string{"Audio", "Video", "Image", "Application", "Other"} }
+// => actually not such a good idea, because it forces us to do a "selsert" for every DB mutation, which is expensive!
+// So: init the filetypes table when creating the DB
 
 type FileTypeStatsDB struct {
-	// self *FileTypeStatsDB
 	fileName string
 	DB       *sql.DB
 	IsOpened bool
+	dbmutex  sync.Mutex
 }
 
 // New returns a DB instance to the sqlite db in existing file or creates it if it doesn't exist and create==true
@@ -81,6 +83,34 @@ func (f *FileTypeStatsDB) initDB() error {
 	if err := f.createTables(); err != nil {
 		return err
 	}
+
+	if err := f.initCats(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (f *FileTypeStatsDB) initCats() error {
+	cats := types.FClassNames()
+	qryl := make([]string, len(cats)+2)
+	qryl[0] = "BEGIN TRANSACTION"
+	i := 1
+	for _, c := range cats {
+		qryl[i] = fmt.Sprintf(
+			`INSERT INTO cats(filecat) VALUES('%s')
+				ON CONFLICT(filecat) DO NOTHING`,
+			c,
+		)
+		i += 1
+	}
+	qryl[i] = "COMMIT;"
+	qry := strings.Join(qryl, ";\n")
+
+	if _, err := f.DB.Exec(qry); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -109,7 +139,7 @@ func (f *FileTypeStatsDB) createTables() error {
 	return nil
 }
 
-// FTStatsSum returns the summary FileTypeStats for the given paths as a map of FTypeStat per File Type
+// Paths are selected according to the following rules:
 // Paths can be files or directories. The summary is counted like this for the respective path format
 // path="/my/dir/*" => count /my/dir/ and below recursively
 // path="/my/dir*/*" => count all dirs matching /my/dir*/ and below recursively
@@ -117,6 +147,37 @@ func (f *FileTypeStatsDB) createTables() error {
 // path="/my/dir*/" => count ony the contents of dirs matching /my/dir*/
 // path="/my/file" => count only "/my/file"
 // path="/my/file*" => count all files matching "/my/file*"
+
+// FTDumpPaths returns all paths and raw info selected by the paths argument
+func (f *FileTypeStatsDB) FTDumpPaths(paths []string) (*[]types.FTypeStat, error) {
+	wp := f.pathsWherePredicate(paths)
+	fts := make([]types.FTypeStat, 0)
+	rs, err := f.DB.Query(fmt.Sprintf(
+		`SELECT fileinfo.path AS Path, cats.filecat AS Category, fileinfo.size AS Size FROM fileinfo,cats
+			WHERE fileinfo.catid=cats.id AND (%s)`,
+		wp,
+	))
+	if err != nil {
+		return &fts, err
+	}
+	defer rs.Close()
+
+	var (
+		path     string
+		filecat  string
+		filesize uint64
+	)
+
+	for rs.Next() {
+		if err := rs.Scan(&path, &filecat, &filesize); err != nil {
+			return &fts, err
+		}
+		fts = append(fts, types.FTypeStat{Path: path, FType: filecat, NumBytes: filesize, FileCount: 0})
+	}
+	return &fts, nil
+}
+
+// FTStatsSum returns the summary FileTypeStats for the given paths as a map of FTypeStat per File Type
 func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error) {
 	wp := f.pathsWherePredicate(paths)
 	ftstats := make(types.FileTypeStats)
@@ -155,8 +216,8 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 		path = pathN.String
 		fcat = fcatN.String
 		fcatcount = uint(fcatcountN.Int32) // crappy that we don't have sql.NullUInt => will this be a problem???
-		fcatsize = uint64(fcatsizeN.Int64) // crappy that we don't have sql.NullUInt64 => will this be a problem???
-		if len(paths) == 1 {               // the query has specified a single directory pattern, so we use it for the path
+		fcatsize = uint64(fcatsizeN.Int64)
+		if len(paths) == 1 { // the query has specified a single directory pattern, so we use it for the path
 			if fcatcount == 1 && fcat != "total" { // there's only one, so we can take the exact path, except for totals take the input path
 				ftstats[fcat] = &types.FTypeStat{Path: path, FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
 			} else { // use input pattern for path
@@ -171,17 +232,14 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 
 // UpdateFileStats upserts the file in path with size
 func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) error {
-	catid, err := f.selsertIdText("cats", "filecat", filecat)
-	if err != nil {
-		return err
-	}
 	// upsert file type stats for dir
-	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
-
 	if _, err := f.DB.Exec((fmt.Sprintf(
-		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, %d, %d)
+		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
 			ON CONFLICT(path) DO
-			UPDATE SET size=%d, catid=%d, updated=%d`, path, size, catid, time.Now().Unix(), size, catid, time.Now().Unix()))); err != nil {
+			UPDATE SET size=%d, catid=(SELECT id FROM cats WHERE filecat='%s'), updated=%d`,
+		strings.Replace(path, "'", "''", -1), // escape single quotes for SQL
+		size, filecat, time.Now().Unix(), size, filecat, time.Now().Unix(),
+	))); err != nil {
 		return err
 	}
 	return nil
@@ -191,7 +249,7 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 // if path is a dir the update is recursive
 func (f *FileTypeStatsDB) UpdateFilePath(from, to string) error {
 	from = strings.Replace(from, "'", "''", -1) // escape single quotes for SQL
-	to = strings.Replace(to, "'", "''", -1)     // escape single quotes for SQL
+	to = strings.Replace(to, "'", "''", -1)
 	if _, err := f.DB.Exec((fmt.Sprintf(
 		`UPDATE fileinfo SET path=REPLACE(path, '%s', '%s'), updated=%d;`, from, to, time.Now().Unix()))); err != nil {
 		return err
@@ -221,7 +279,7 @@ func (f *FileTypeStatsDB) DeleteOlderThanWithPrefix(t time.Time, prefix string) 
 
 // DeleteFileStats deletes the file/dir in path, if it's a dir, the delete is recursive
 func (f *FileTypeStatsDB) DeleteFileStats(path string) error {
-	// if we delete "<path>/*" OR "<path>" from the DB, we catch automatically the recursife case if it was a dir and existed, otherwise we delete just the file
+	// if we delete "<path>/*" OR "<path>" from the DB, we catch automatically the recursive case if it was a dir and existed, otherwise we delete just the file
 	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
 
 	if _, err := f.DB.Exec((fmt.Sprintf(
@@ -261,6 +319,8 @@ func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error)
 // pathsWherePredicate returns the WHERE clause part selecting the paths according to input dir list
 // we'll be using GLOB, translated from the path list to satisfy behaviour as described for FTStatsSum()
 func (f *FileTypeStatsDB) pathsWherePredicate(paths []string) string {
+	// we can (significantly) optimise the query by removing ineffective paths (duplicates and children of recursive globs) first
+	paths = utils.OptimizePathsGlob(&paths)
 	pred := make([]string, len(paths))
 	for i, d := range paths {
 		d = strings.Replace(d, "'", "''", -1)                          // escape single quotes for SQL
