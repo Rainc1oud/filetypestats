@@ -35,7 +35,7 @@ func (f *FileTypeStats) ToString() string {
 	s := ""
 	for _, k := range FTypeNames() {
 		if st, ok := (*f)[k]; ok {
-			s += fmt.Sprintf("\t%s.sum{size: %8s, count: %5d}\n", k, gogenutils.ByteCountSI(st.NumBytes), st.FileCount)
+			s += fmt.Sprintf("\t%s.sum{size: %8s, count: %5d, path: %-16s}\n", k, gogenutils.ByteCountSI(st.NumBytes), st.FileCount, st.Path)
 		}
 	}
 	return s

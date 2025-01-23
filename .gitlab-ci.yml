@@ -1,0 +1,36 @@
+default:
+  tags:
+    - docker
+  image: 1nnoserv.gtnet.lan:15000/xbuildimg/rcbuild-go:amd64-glibc2.31-go1.21.1 # need "modern" base image to support env -S for funtest.test
+  before_script:
+    - echo "machine g1tlab.1nnov8.de login r-ci-bot password $BOT_ACCESS_TOKEN" > ~/.netrc
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  GOPRIVATE: "g1tlab.1nnov8.de"
+
+stages:
+  - semvertag
+  - test
+
+# include semantic versioning autotagging CI
+# Remember to a project CI var BOT_ACCESS_TOKEN containing it
+# and actually there appears to be a bug, trying with temp hack:
+# ref: https://gitlab.com/gitlab-org/gitlab/-/issues/259665#note_451973854
+# temp hack doesn't work, but now a permanent CI bot (r-ci-bot) has been defined,
+# for whom the correct personal access token should be used
+include:
+  - project: "r/deploy/iss"
+    file: "semvertag.gitlab-ci.yml"
+
+test-unit:
+  stage: test
+  variables:
+    GOARCH: "amd64"
+    GOMODCACHE: "${CI_PROJECT_DIR}/.gomodcache-${GOARCH}/pkg/mod"
+    GOCACHE: "${CI_PROJECT_DIR}/.gocache-${GOARCH}/go-build"
+    GOPATH: "${CI_PROJECT_DIR}/.go-${GOARCH}"
+  script: |
+    source /etc/environment
+    go test -v ./...
+    go test -covermode count ./... -coverprofile cover.report.out
