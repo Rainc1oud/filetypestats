@@ -1,30 +1,26 @@
 {
-  description = "go devShell";
-
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs";
-    flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
   };
 
-  outputs = {
-    self,
-    flake-utils,
+  outputs = inputs @ {
+    flake-parts,
     nixpkgs,
+    ...
   }:
-    flake-utils.lib.eachDefaultSystem (system: {
-      devShell = let
-        pkgs = import nixpkgs {
-          inherit system;
-        };
-        # inherit (pkgs) lib;
-      in
-        pkgs.mkShell {
-          buildInputs = with pkgs; [
+    flake-parts.lib.mkFlake {inherit inputs;} {
+      systems = ["x86_64-linux" "aarch64-linux" "aarch64-darwin"];
+
+      perSystem = {pkgs, ...}: {
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
             go
             gopls
             sqlite
           ];
           hardeningDisable = ["all"];
         };
-    });
+      };
+    };
 }
