@@ -149,6 +149,8 @@ func (f *FileTypeStatsDB) createTables() error {
 // path="/my/file*" => count all files matching "/my/file*"
 
 // FTDumpPaths returns all paths and raw info selected by the paths argument
+// FIXME: this does not work (yet) of len(paths)>500, but this function is (should be!)
+// only used in the testcli, so not a real issue
 func (f *FileTypeStatsDB) FTDumpPaths(paths []string) (*[]types.FTypeStat, error) {
 	wp := f.pathsWherePredicate(paths)
 	fts := make([]types.FTypeStat, 0)
@@ -178,18 +180,32 @@ func (f *FileTypeStatsDB) FTDumpPaths(paths []string) (*[]types.FTypeStat, error
 }
 
 // FTStatsSum returns the summary FileTypeStats for the given paths as a map of FTypeStat per File Type
+// To facilitate aggregation over multiple SELECTs (to circumvent the max WHERE conditions issue for >1000)
+// The strategy becomes to concatenate SELECT results with UNION ALL into a CTE (Common Table Expression),
+// then re-select from the CTE and add the "totals" record with UNION
 func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error) {
-	wp := f.pathsWherePredicate(paths)
+	const maxWhereCond = 500 // the maximum is 1000, but the where predicate has 2 conditions for each path
 	ftstats := make(types.FileTypeStats)
+
+	var qryParts []string
+	for start := 0; start < len(paths); start += maxWhereCond {
+		end := start + maxWhereCond
+		if end > len(paths) {
+			end = len(paths)
+		}
+		wp := f.pathsWherePredicate(paths[start:end])
+		qryParts = append(
+			qryParts,
+			fmt.Sprintf(
+				`SELECT cats.filecat AS fcat, fileinfo.path, COUNT(fileinfo.path) AS fcatcount, SUM(fileinfo.size) AS fcatsize FROM fileinfo, cats WHERE fileinfo.catid=cats.id AND (%s) GROUP BY cats.filecat`,
+				wp),
+		)
+	}
+
 	rs, err := f.DB.Query(fmt.Sprintf(
-		`SELECT cats.filecat AS fcat, fileinfo.path, COUNT(fileinfo.path) AS fcatcount, SUM(fileinfo.size) AS fcatsize FROM fileinfo, cats
-			WHERE fileinfo.catid=cats.id AND (%s)
-			GROUP BY cats.filecat
-		 UNION ALL
-		 SELECT 'total', '', COUNT(fileinfo.path), SUM(fileinfo.size) FROM cats, fileinfo
-		 	WHERE fileinfo.catid=cats.id AND (cats.filecat IS NOT 'dir') AND (%s)
-		 ORDER BY fileinfo.path
-			`, wp, wp))
+		`WITH CatSum(fcat, path, fcatcount, fcatsize) AS (%s) SELECT fcat, '' AS path, SUM(CatSum.fcatcount) AS fcatcount, SUM(CatSum.fcatsize) AS fcatsize FROM CatSum GROUP BY CatSum.fcat UNION SELECT 'total' AS fcat, '', SUM(CatSum.fcatcount), SUM(CatSum.fcatsize) FROM CatSum`,
+		strings.Join(qryParts, ` UNION ALL `)))
+
 	if err != nil {
 		return ftstats, err
 	}
