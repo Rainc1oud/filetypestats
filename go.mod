@@ -1,6 +1,6 @@
 module github.com/Rainc1oud/filetypestats
 
-go 1.20
+go 1.23
 
 replace github.com/Rainc1oud/filetypestats => ./
 

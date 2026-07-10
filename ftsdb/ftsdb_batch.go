@@ -35,13 +35,14 @@ func (f *FileTypeStatsDB) upsertFileStatsMulti(batchBuffer *types.FTypeStatsBatc
 	qryl := make([]string, len(pathsInfo)+2)
 	qryl[0] = "BEGIN TRANSACTION"
 	i := 1
+	updated := time.Now().Unix()
 	for _, pi := range pathsInfo {
 		qryl[i] = (fmt.Sprintf(
 			`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
 				ON CONFLICT(path) DO
 				UPDATE SET size=%d, catid=(SELECT id FROM cats WHERE filecat='%s'), updated=%d`,
-			strings.Replace(pi.Path, "'", "''", -1), pi.NumBytes, pi.FType, time.Now().Unix(),
-			pi.NumBytes, pi.FType, time.Now().Unix(),
+			strings.ReplaceAll(pi.Path, "'", "''"), pi.NumBytes, pi.FType, updated,
+			pi.NumBytes, pi.FType, updated,
 		))
 		i += 1
 	}

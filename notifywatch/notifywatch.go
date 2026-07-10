@@ -1,6 +1,7 @@
 package notifywatch
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Rainc1oud/filetypestats/utils"
@@ -37,7 +38,7 @@ func NewNotifyWatcher(dir string, recursive bool, handler NotifyHandlerFun, even
 // Watch starts an initialised notify watcher (blockings)
 func (nw *NotifyWatcher) Watch() error {
 	if nw.watchdir == "" {
-		return fmt.Errorf("ERROR: refusing to start empty watcher")
+		return errors.New("refusing to start empty watcher")
 	}
 	var dir string
 	var err error

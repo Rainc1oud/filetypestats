@@ -2,6 +2,7 @@ package ftsdb
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -45,15 +46,21 @@ func openDB(dbfile string, create bool) (*sql.DB, error) {
 	var err error
 	var db *sql.DB
 
-	if _, err = os.Open(dbfile); err != nil {
-		if os.IsNotExist(err) {
+	if _, err = os.Stat(dbfile); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
 			if create {
-				if _, err := os.Create(dbfile); err != nil {
+				file, err := os.Create(dbfile)
+				if err != nil {
+					return nil, err
+				}
+				if err := file.Close(); err != nil {
 					return nil, err
 				}
 			} else {
 				return nil, err
 			}
+		} else {
+			return nil, err
 		}
 	}
 
@@ -249,12 +256,13 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 // UpdateFileStats upserts the file in path with size
 func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) error {
 	// upsert file type stats for dir
+	updated := time.Now().Unix()
 	if _, err := f.DB.Exec((fmt.Sprintf(
 		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
 			ON CONFLICT(path) DO
 			UPDATE SET size=%d, catid=(SELECT id FROM cats WHERE filecat='%s'), updated=%d`,
-		strings.Replace(path, "'", "''", -1), // escape single quotes for SQL
-		size, filecat, time.Now().Unix(), size, filecat, time.Now().Unix(),
+		strings.ReplaceAll(path, "'", "''"), // escape single quotes for SQL
+		size, filecat, updated, size, filecat, updated,
 	))); err != nil {
 		return err
 	}
@@ -264,8 +272,8 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 // UpdateFilePath updates the file path(s), which needs to happen on a file move
 // if path is a dir the update is recursive
 func (f *FileTypeStatsDB) UpdateFilePath(from, to string) error {
-	from = strings.Replace(from, "'", "''", -1) // escape single quotes for SQL
-	to = strings.Replace(to, "'", "''", -1)
+	from = strings.ReplaceAll(from, "'", "''") // escape single quotes for SQL
+	to = strings.ReplaceAll(to, "'", "''")
 	if _, err := f.DB.Exec((fmt.Sprintf(
 		`UPDATE fileinfo SET path=REPLACE(path, '%s', '%s'), updated=%d;`, from, to, time.Now().Unix()))); err != nil {
 		return err
@@ -284,6 +292,7 @@ func (f *FileTypeStatsDB) DeleteOlderThan(t time.Time) error {
 
 // DeleteOlderThanWithPrefix deletes all entries older than (i.e. not updated after) t
 func (f *FileTypeStatsDB) DeleteOlderThanWithPrefix(t time.Time, prefix string) error {
+	prefix = strings.ReplaceAll(prefix, "'", "''")
 	if _, err := f.DB.Exec((fmt.Sprintf(
 		`DELETE FROM fileinfo
 		WHERE fileinfo.updated < %d
@@ -296,7 +305,7 @@ func (f *FileTypeStatsDB) DeleteOlderThanWithPrefix(t time.Time, prefix string) 
 // DeleteFileStats deletes the file/dir in path, if it's a dir, the delete is recursive
 func (f *FileTypeStatsDB) DeleteFileStats(path string) error {
 	// if we delete "<path>/*" OR "<path>" from the DB, we catch automatically the recursive case if it was a dir and existed, otherwise we delete just the file
-	path = strings.Replace(path, "'", "''", -1) // escape single quotes for SQL
+	path = strings.ReplaceAll(path, "'", "''") // escape single quotes for SQL
 
 	if _, err := f.DB.Exec((fmt.Sprintf(
 		`DELETE FROM fileinfo WHERE
@@ -312,7 +321,7 @@ func (f *FileTypeStatsDB) DbFileName() string {
 
 // returns table.id where field==value, inserts value if not exist (id must be AUTOINCREMENT)
 func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error) {
-	value = strings.Replace(value, "'", "''", -1) // escape single quotes for SQL
+	value = strings.ReplaceAll(value, "'", "''") // escape single quotes for SQL
 	var id int
 	rs, err := f.DB.Query(fmt.Sprintf("SELECT id FROM %s WHERE %s='%s'", table, field, value))
 	if err != nil {
@@ -339,7 +348,7 @@ func (f *FileTypeStatsDB) pathsWherePredicate(paths []string) string {
 	paths = utils.OptimizePathsGlob(&paths)
 	pred := make([]string, len(paths))
 	for i, d := range paths {
-		d = strings.Replace(d, "'", "''", -1)                          // escape single quotes for SQL
+		d = strings.ReplaceAll(d, "'", "''")                           // escape single quotes for SQL
 		if strings.HasSuffix(d, "*/*") || strings.HasSuffix(d, "/*") { // recursive directory
 			pred[i] = fmt.Sprintf("(fileinfo.path GLOB '%s')", d)
 		} else if strings.HasSuffix(d, "/") || strings.HasSuffix(d, "*/") { // specific directory or directory pattern

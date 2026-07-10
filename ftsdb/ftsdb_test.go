@@ -2,14 +2,14 @@ package ftsdb
 
 import (
 	"fmt"
-	"github.com/google/go-cmp/cmp"
-	"math/rand"
+	rand "math/rand/v2"
 	"os"
 	"path"
 	"path/filepath"
 	"testing"
 
 	"github.com/Rainc1oud/filetypestats/types"
+	"github.com/google/go-cmp/cmp"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -78,16 +78,18 @@ func TestFileTypeStatsDB_FTStatsSum(t *testing.T) {
 	allFiles := make(types.FileTypeStats)
 	selFiles := make(types.FileTypeStats)
 	selPaths := make([]string, 0)
+	rng := rand.New(rand.NewPCG(1, 2))
+	fclasses := types.FClassNames()
 
 	// fill database with test data
 	for n := 0; n < totalFiles; n++ {
-		fsize := uint64(rand.Int63n(9000000))
+		fsize := uint64(rng.Int64N(9000000))
 		fpath := fmt.Sprintf("/somedir/file%04d.tmp", n)
-		fcat := types.FClassNames()[rand.Intn(len(types.FClassNames()))]
+		fcat := fclasses[rng.IntN(len(fclasses))]
 		fdb.UpdateFileStats(fpath, fcat, fsize)
 		allFiles[fpath] = &types.FTypeStat{Path: fpath, FType: fcat, NumBytes: fsize, FileCount: 1}
 		totalFileSize += fsize
-		if rand.Intn(9) > 1 { // add to a selection based on random
+		if rng.IntN(9) > 1 { // add to a selection based on random
 			selFiles[fpath] = &types.FTypeStat{Path: fpath, FType: fcat, NumBytes: fsize, FileCount: 1}
 			selPaths = append(selPaths, fpath)
 		}

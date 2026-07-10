@@ -2,9 +2,8 @@ package utils
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
-
-	ggu "github.com/Rainc1oud/gogenutils"
 )
 
 // wconvert contains util functions to convert wildcards between different formats used by this lib and included libs
@@ -66,5 +65,7 @@ func StringSliceApply(slice []string, fun func(string) string) []string {
 // For now, our simpler implementation just filters duplicates
 // OptimizePathsGlob returns an optimised paths list with duplicates removed (TODO: remove children that are included by parent glob)
 func OptimizePathsGlob(paths *[]string) []string {
-	return *ggu.StringSliceUniq(paths)
+	optimized := slices.Clone(*paths)
+	slices.Sort(optimized)
+	return slices.Compact(optimized)
 }
