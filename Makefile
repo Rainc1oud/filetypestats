@@ -5,14 +5,16 @@ BENCH_ROOT ?= ..
 BENCH_TIME ?= 1x
 BENCH_PATTERN ?= .
 BENCH_PKG ?= ./...
-SQL_DRIVER ?= sqlite3
+SQL_DRIVER ?= modernc-sqlite
 BENCH_DATETIME := $(shell date +%Y%m%d-%H%M%S)
 BENCH_OUT_DIR ?= _tests/benchmark
 BENCH_CSV ?= $(BENCH_OUT_DIR)/benchmark-$(SQL_DRIVER)-$(BENCH_DATETIME).csv
 BENCH_RAW ?= $(BENCH_OUT_DIR)/benchmark-$(SQL_DRIVER)-$(BENCH_DATETIME).txt
+BENCH_CHART ?= $(BENCH_OUT_DIR)/benchmark-comparison.svg
+BENCH_CHART_INPUTS ?= $(wildcard $(BENCH_OUT_DIR)/benchmark-*.csv)
 
-# needed for sqlite dep, needs container builds for other archs
-GOENV := CGO_ENABLED=1 GO111MODULE="on"
+# keep builds pure Go; the sqlite dependency uses modernc.org/sqlite.
+GOENV := CGO_ENABLED=0 GO111MODULE="on"
 
 ### build container settings
 DOCKEREXE := $(shell command -v podman)
@@ -37,24 +39,28 @@ clean:
 
 .PHONY: test
 test:
-	go test -v ./...
+	$(GOENV) go test -v ./...
 
 .PHONY: test-benchmark
 test-benchmark: test-benchmark-csv
 
 .PHONY: test-benchmark-raw
 test-benchmark-raw:
-	FILETYPESTATS_BENCH_ROOT="$(BENCH_ROOT)" go test -run '^$$' -bench '$(BENCH_PATTERN)' -benchtime '$(BENCH_TIME)' -benchmem $(BENCH_PKG)
+	FILETYPESTATS_BENCH_ROOT="$(BENCH_ROOT)" $(GOENV) go test -run '^$$' -bench '$(BENCH_PATTERN)' -benchtime '$(BENCH_TIME)' -benchmem $(BENCH_PKG)
 
 .PHONY: test-benchmark-csv
 test-benchmark-csv: $(BENCH_OUT_DIR)/
-	FILETYPESTATS_BENCH_ROOT="$(BENCH_ROOT)" go test -run '^$$' -bench '$(BENCH_PATTERN)' -benchtime '$(BENCH_TIME)' -benchmem $(BENCH_PKG) | tee "$(BENCH_RAW)"
+	FILETYPESTATS_BENCH_ROOT="$(BENCH_ROOT)" $(GOENV) go test -run '^$$' -bench '$(BENCH_PATTERN)' -benchtime '$(BENCH_TIME)' -benchmem $(BENCH_PKG) | tee "$(BENCH_RAW)"
 	awk -v driver="$(SQL_DRIVER)" -v datetime="$(BENCH_DATETIME)" -f scripts/bench-to-csv.awk "$(BENCH_RAW)" > "$(BENCH_CSV)"
 	@echo "wrote $(BENCH_CSV)"
 
+.PHONY: benchmark-chart
+benchmark-chart: $(BENCH_OUT_DIR)/
+	awk -v out="$(BENCH_CHART)" -f scripts/bench-csv-chart.awk $(BENCH_CHART_INPUTS)
+
 .PHONY: test-stress
 test-stress:
-	FILETYPESTATS_BENCH_ROOT="$(BENCH_ROOT)" go test -run '^$$' -bench 'Benchmark(WalkFileTypeStatsDBRealTree|TreeStatsWatcherScanDirRealTree)' -benchtime '$(BENCH_TIME)' -benchmem .
+	FILETYPESTATS_BENCH_ROOT="$(BENCH_ROOT)" $(GOENV) go test -run '^$$' -bench 'Benchmark(WalkFileTypeStatsDBRealTree|TreeStatsWatcherScanDirRealTree)' -benchtime '$(BENCH_TIME)' -benchmem .
 
 # catchall mkdir
 %/:

@@ -17,7 +17,7 @@ Important areas:
 
 ## Build And Test
 
-This module targets Go 1.20 and uses CGO through `github.com/mattn/go-sqlite3`.
+This module targets Go 1.25 and uses the pure-Go `modernc.org/sqlite` driver.
 
 Common commands:
 
@@ -30,7 +30,7 @@ make testcli
 
 Notes:
 
-- `CGO_ENABLED=1` is required for normal builds and tests.
+- `CGO_ENABLED=0` is the expected build mode.
 - `make testcli` builds `build/linux-amd64/testcli` by default.
 - Cross-architecture `make testcli` targets use Podman and an internal container image; do not assume they work outside the author's environment.
 - Tests create temporary SQLite files/directories under package directories and should clean them up. Investigate leftover `.tmp-*` or `*.sqlite` files before deleting them.

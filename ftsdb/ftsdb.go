@@ -11,7 +11,7 @@ import (
 
 	"github.com/Rainc1oud/filetypestats/types"
 	"github.com/Rainc1oud/filetypestats/utils"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // file categories are added when encountered, no need to hard-code and/or init in the DB
@@ -64,7 +64,7 @@ func openDB(dbfile string, create bool) (*sql.DB, error) {
 		}
 	}
 
-	if db, err = sql.Open("sqlite3", dbfile); err != nil {
+	if db, err = sql.Open("sqlite", dbfile); err != nil {
 		return nil, err
 	}
 	return db, nil
@@ -73,7 +73,7 @@ func openDB(dbfile string, create bool) (*sql.DB, error) {
 func (f *FileTypeStatsDB) Open() error {
 	var err error
 	if !f.IsOpened {
-		if f.DB, err = sql.Open("sqlite3", f.fileName); err != nil {
+		if f.DB, err = sql.Open("sqlite", f.fileName); err != nil {
 			return err
 		}
 	}

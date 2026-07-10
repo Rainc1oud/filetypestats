@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="794" viewBox="0 0 1180 794">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#172033}.title{font-size:22px;font-weight:700}.note{font-size:12px;fill:#667085}.bench{font-size:12px;font-weight:700}.label{font-size:11px}.axis{stroke:#d0d5dd;stroke-width:1}.grid{stroke:#eaecf0;stroke-width:1}.barlabel{font-size:11px;fill:#344054}</style>
+<text class="title" x="24" y="34">SQLite Driver Benchmark Comparison</text>
+<text class="note" x="24" y="56">Horizontal bars use log10(ns/op); shorter is faster. Labels show actual ns/op converted to time.</text>
+<rect x="330" y="26" width="12" height="12" rx="2" fill="#2563eb"/>
+<text class="label" x="348" y="36">modernc-sqlite</text>
+<rect x="480" y="26" width="12" height="12" rx="2" fill="#dc6803"/>
+<text class="label" x="498" y="36">sqlite3</text>
+<line class="grid" x1="341.751" y1="74" x2="341.751" y2="732"/>
+<text class="note" text-anchor="middle" x="341.751" y="754">10^5 ns</text>
+<line class="grid" x1="503.826" y1="74" x2="503.826" y2="732"/>
+<text class="note" text-anchor="middle" x="503.826" y="754">10^6 ns</text>
+<line class="grid" x1="665.901" y1="74" x2="665.901" y2="732"/>
+<text class="note" text-anchor="middle" x="665.901" y="754">10^7 ns</text>
+<line class="grid" x1="827.976" y1="74" x2="827.976" y2="732"/>
+<text class="note" text-anchor="middle" x="827.976" y="754">10^8 ns</text>
+<line class="grid" x1="990.051" y1="74" x2="990.051" y2="732"/>
+<text class="note" text-anchor="middle" x="990.051" y="754">10^9 ns</text>
+<line class="axis" x1="330" y1="732" x2="1140" y2="732"/>
+<text class="bench" text-anchor="end" x="316" y="110">WalkFileTypeStatsDBRealTree</text>
+<rect x="330" y="94" width="810" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="1146" y="106">8.42s</text>
+<rect x="330" y="114" width="795.489" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="1131.49" y="126">6.85s</text>
+<text class="note" x="330" y="140">sqlite3/modernc-sqlite: 0.81x time</text>
+<text class="bench" text-anchor="end" x="316" y="166">TreeStatsWatcherScanDirRealTree</text>
+<rect x="330" y="150" width="800.012" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="1136.01" y="162">7.30s</text>
+<rect x="330" y="170" width="790.876" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="1126.88" y="182">6.41s</text>
+<text class="note" x="330" y="196">sqlite3/modernc-sqlite: 0.88x time</text>
+<text class="bench" text-anchor="end" x="316" y="222">FTStatsSumRealTreeDB</text>
+<rect x="330" y="206" width="513.203" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="849.203" y="218">124.2ms</text>
+<rect x="330" y="226" width="467.117" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="803.117" y="238">64.5ms</text>
+<text class="note" x="330" y="252">sqlite3/modernc-sqlite: 0.52x time</text>
+<text class="bench" text-anchor="end" x="316" y="278">FTDumpPathsRealTreeDB</text>
+<rect x="330" y="262" width="580.835" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="916.835" y="274">324.5ms</text>
+<rect x="330" y="282" width="537.119" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="873.119" y="294">174.4ms</text>
+<text class="note" x="330" y="308">sqlite3/modernc-sqlite: 0.54x time</text>
+<text class="bench" text-anchor="end" x="316" y="334">UpdateFileStatsUpsert</text>
+<rect x="330" y="318" width="42.2947" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="378.295" y="330">154.3us</text>
+<rect x="330" y="338" width="16.6215" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="352.621" y="350">107.2us</text>
+<text class="note" x="330" y="364">sqlite3/modernc-sqlite: 0.69x time</text>
+<text class="bench" text-anchor="end" x="316" y="390">UpdateFileStatsMultiCommitBatch</text>
+<rect x="330" y="374" width="11.132" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="347.132" y="386">99.1us</text>
+<rect x="330" y="394" width="31.7344" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="367.734" y="406">132.8us</text>
+<text class="note" x="330" y="420">sqlite3/modernc-sqlite: 1.34x time</text>
+<text class="bench" text-anchor="end" x="316" y="446">UpdateFilePathSingleRow</text>
+<rect x="330" y="430" width="425.886" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="761.886" y="442">35.9ms</text>
+<rect x="330" y="450" width="400.416" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="736.416" y="462">25.0ms</text>
+<text class="note" x="330" y="476">sqlite3/modernc-sqlite: 0.70x time</text>
+<text class="bench" text-anchor="end" x="316" y="502">UpdateFilePathDirectoryPrefix</text>
+<rect x="330" y="486" width="412.647" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="748.647" y="498">29.8ms</text>
+<rect x="330" y="506" width="422.191" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="758.191" y="518">34.1ms</text>
+<text class="note" x="330" y="532">sqlite3/modernc-sqlite: 1.15x time</text>
+<text class="bench" text-anchor="end" x="316" y="558">DeleteFileStatsSingleRow</text>
+<rect x="330" y="542" width="2" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="338" y="554">84.6us</text>
+<rect x="330" y="562" width="63.2717" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="399.272" y="574">207.9us</text>
+<text class="note" x="330" y="588">sqlite3/modernc-sqlite: 2.46x time</text>
+<text class="bench" text-anchor="end" x="316" y="614">FTStatsSumSyntheticDB</text>
+<rect x="330" y="598" width="340.329" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="676.329" y="610">10.6ms</text>
+<rect x="330" y="618" width="347.662" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="683.662" y="630">11.8ms</text>
+<text class="note" x="330" y="644">sqlite3/modernc-sqlite: 1.11x time</text>
+<text class="bench" text-anchor="end" x="316" y="670">FTDumpPathsSyntheticDB</text>
+<rect x="330" y="654" width="325.157" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="661.157" y="666">8.6ms</text>
+<rect x="330" y="674" width="415.382" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="751.382" y="686">30.9ms</text>
+<text class="note" x="330" y="700">sqlite3/modernc-sqlite: 3.60x time</text>
+</svg>

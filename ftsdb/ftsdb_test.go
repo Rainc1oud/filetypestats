@@ -10,7 +10,6 @@ import (
 
 	"github.com/Rainc1oud/filetypestats/types"
 	"github.com/google/go-cmp/cmp"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func tmpDB(t *testing.T) (fdb *FileTypeStatsDB) {
