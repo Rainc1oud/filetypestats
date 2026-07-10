@@ -1,0 +1,29 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Rainc1oud/filetypestats
+BenchmarkWalkFileTypeStatsDBRealTree-8       	       1	6849333958 ns/op	2742147128 B/op	 1070235 allocs/op
+BenchmarkTreeStatsWatcherScanDirRealTree-8   	       1	6414867080 ns/op	2742140032 B/op	 1070242 allocs/op
+BenchmarkFTStatsSumRealTreeDB-8              	       1	  64506612 ns/op	   14896 B/op	     196 allocs/op
+BenchmarkFTDumpPathsRealTreeDB-8             	       1	 174386797 ns/op	23836152 B/op	  283626 allocs/op
+PASS
+ok  	github.com/Rainc1oud/filetypestats	26.469s
+goos: linux
+goarch: arm64
+pkg: github.com/Rainc1oud/filetypestats/ftsdb
+BenchmarkUpdateFileStatsUpsert-8             	       1	    107165 ns/op	         1.000 final_rows	      8133 rows/s	         1.000 target_rows/op	    1032 B/op	      13 allocs/op
+BenchmarkUpdateFileStatsMultiCommitBatch-8   	       1	    132831 ns/op	       500.0 batch_cap	         1.000 final_rows	      6667 rows/s	         1.000 target_rows/op	   26360 B/op	      24 allocs/op
+BenchmarkUpdateFilePathSingleRow-8           	       1	  25006886 ns/op	        39.94 rows/s	     10000 table_rows	         1.000 target_rows/op	     928 B/op	      15 allocs/op
+BenchmarkUpdateFilePathDirectoryPrefix-8     	       1	  34072951 ns/op	    293215 rows/s	     10000 table_rows	     10000 target_rows/op	     232 B/op	       8 allocs/op
+BenchmarkDeleteFileStatsSingleRow-8          	       1	    207914 ns/op	     10000 initial_rows	      4150 rows/s	         1.000 target_rows/op	     280 B/op	       8 allocs/op
+BenchmarkFTStatsSumSyntheticDB-8             	       1	  11818660 ns/op	    844170 rows/s	     10000 selected_rows/op	     10000 table_rows	    2600 B/op	      78 allocs/op
+BenchmarkFTDumpPathsSyntheticDB-8            	       1	  30931320 ns/op	    322777 rows/s	     10000 selected_rows/op	     10000 table_rows	 3212784 B/op	   59894 allocs/op
+PASS
+ok  	github.com/Rainc1oud/filetypestats/ftsdb	4.267s
+?   	github.com/Rainc1oud/filetypestats/internal/cmd/testcli	[no test files]
+PASS
+ok  	github.com/Rainc1oud/filetypestats/notifywatch	0.003s
+?   	github.com/Rainc1oud/filetypestats/test	[no test files]
+PASS
+ok  	github.com/Rainc1oud/filetypestats/treestatsquery	0.005s
+?   	github.com/Rainc1oud/filetypestats/types	[no test files]
+?   	github.com/Rainc1oud/filetypestats/utils	[no test files]
