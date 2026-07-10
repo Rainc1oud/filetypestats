@@ -135,3 +135,52 @@ func TestFileTypeStatsDB_FTStatsSum(t *testing.T) {
 		})
 	}
 }
+
+func TestFileTypeStatsDB_BatchDumpMoveAndDelete(t *testing.T) {
+	fdb := tmpDB(t)
+	defer os.RemoveAll(path.Dir(fdb.DbFileName()))
+
+	batch := types.NewFTypeStatsBatch(3)
+	if err := fdb.UpdateFileStatsMulti("/tree/", "dir", 0, batch); err != nil {
+		t.Fatal(err)
+	}
+	if err := fdb.UpdateFileStatsMulti("/tree/image.png", "image", 42, batch); err != nil {
+		t.Fatal(err)
+	}
+	if err := fdb.CommitBatch(batch); err != nil {
+		t.Fatal(err)
+	}
+	if !batch.IsEmpty() {
+		t.Fatal("batch should be empty after commit")
+	}
+
+	dump, err := fdb.FTDumpPaths([]string{"/tree/*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(*dump) != 2 {
+		t.Fatalf("dump length = %d, want 2: %#v", len(*dump), *dump)
+	}
+
+	if err := fdb.UpdateFilePath("/tree/image.png", "/tree/moved.png"); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := fdb.FTStatsSum([]string{"/tree/moved.png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats["image"].FileCount != 1 || stats["image"].NumBytes != 42 {
+		t.Fatalf("moved file stats = %#v, want one 42-byte image", stats["image"])
+	}
+
+	if err := fdb.DeleteFileStats("/tree/moved.png"); err != nil {
+		t.Fatal(err)
+	}
+	stats, err = fdb.FTStatsSum([]string{"/tree/*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := stats["image"]; ok {
+		t.Fatalf("image stats still present after delete: %#v", stats["image"])
+	}
+}
