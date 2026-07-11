@@ -1,5 +1,5 @@
-GOOS ?= linux
-GOARCH ?= amd64
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
 BPFX := $(GOOS)-$(GOARCH)
 BENCH_ROOT ?= ..
 BENCH_TIME ?= 1x
@@ -66,10 +66,11 @@ test-stress:
 %/:
 	mkdir -p $@
 
-.PHONY: testcli
-testcli: build/$(BPFX)/testcli
-build/linux-amd64/testcli: internal/cmd/testcli/testcli.go $(GOSRC)
-	$(GOENV) go build -v -o $@ $<
+.PHONY: testcli testcli-native
+testcli: testcli-native
+testcli-native: build/$(BPFX)/testcli
+build/$(BPFX)/testcli: internal/cmd/testcli/testcli.go $(GOSRC) | build/$(BPFX)/
+	$(GOENV) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -v -o $@ $<
 build/linux-%/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/testcli.go $(GOSRC) | build/ .tmp/%/
 	$(DOCKERPULL)
 	$(DOCKEREXE) run --rm \
