@@ -20,8 +20,9 @@ DOCKEREXE := $(shell command -v podman)
 CMARCHLIST := arm-glibc2.17 arm64-glibc2.19 amd64-glibc2.31
 CMARCH = $(filter $(GOARCH)-%,$(CMARCHLIST))
 $(info CMARCH==$(CMARCH))
-IMGNAME = rcbuild-go:$(CMARCH)-go1.20.1
-DOCKERPULL = $(DOCKEREXE) pull --tls-verify=false docker://1nnoserv:15000/xbuildimg/$(IMGNAME)
+IMGNAME = rcbuild-go:$(CMARCH)-go1.25.6
+DOCKERREPO ?= docker://1nnoserv:15000/xbuildimg
+DOCKERPULL = $(DOCKEREXE) pull --tls-verify=false $(DOCKERREPO)/$(IMGNAME)
 
 # std Makefile stuff
 GOSRC := $(wildcard *.go types/*.go ftsdb/*.go treestatsquery/*.go internal/cmd/testcli/*.go)
@@ -65,8 +66,8 @@ testcli: build/$(BPFX)/testcli
 build/linux-amd64/testcli: internal/cmd/testcli/testcli.go $(GOSRC)
 	$(GOENV) go build -v -o $@ $<
 build/linux-%/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/testcli.go $(GOSRC) | build/ .tmp/%/
-	$(DOCKERPULL)
-	$(DOCKEREXE) run --rm \
+	$(DOCKERPULL) --platform linux/$(GOARCH) 
+	$(DOCKEREXE) run --platform linux/$(GOARCH) --rm \
 		-v $(CURDIR):/buildroot \
 		-v $(CURDIR)/build:/build/ \
 		-v $(CURDIR)/.tmp/$*:/gotmp \
@@ -76,4 +77,4 @@ build/linux-%/testcli: internal/cmd/testcli/testcli.go internal/cmd/testcli/test
 		-e GOCACHE="/gotmp/.gocache/go-build" \
 		-e GOPATH="/gotmp/.go" \
 		-w /buildroot \
-		$(IMGNAME) bash -c '. /etc/environment; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
+		$(DOCKERREPO)/$(IMGNAME) bash -c '. /etc/environment; $(GOENV) go get -v -u ./...; $(GOENV) go build -v -o $@ $<'
