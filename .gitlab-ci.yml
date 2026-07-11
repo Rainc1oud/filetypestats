@@ -1,7 +1,7 @@
 default:
   tags:
     - docker
-  image: 1nnoserv.gtnet.lan:15000/xbuildimg/rcbuild-go:amd64-glibc2.31-go1.21.1 # need "modern" base image to support env -S for funtest.test
+  image: 1nnoserv.1nnov8.eu:15000/xbuildimg/rcbuild-go:amd64-glibc2.36-go1.25.6 # need "modern" base image to support env -S for funtest.test
   before_script:
     - echo "machine g1tlab.1nnov8.de login r-ci-bot password $BOT_ACCESS_TOKEN" > ~/.netrc
 
@@ -30,6 +30,7 @@ test-unit:
     GOMODCACHE: "${CI_PROJECT_DIR}/.gomodcache-${GOARCH}/pkg/mod"
     GOCACHE: "${CI_PROJECT_DIR}/.gocache-${GOARCH}/go-build"
     GOPATH: "${CI_PROJECT_DIR}/.go-${GOARCH}"
+    GOTOOLCHAIN: go1.25.6+auto
   script: |
     source /etc/environment
     go test -v ./...
