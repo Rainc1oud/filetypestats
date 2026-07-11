@@ -12,6 +12,12 @@ BENCH_CSV ?= $(BENCH_OUT_DIR)/benchmark-$(SQL_DRIVER)-$(BENCH_DATETIME).csv
 BENCH_RAW ?= $(BENCH_OUT_DIR)/benchmark-$(SQL_DRIVER)-$(BENCH_DATETIME).txt
 BENCH_CHART ?= $(BENCH_OUT_DIR)/benchmark-comparison.svg
 BENCH_CHART_INPUTS ?= $(wildcard $(BENCH_OUT_DIR)/benchmark-*.csv)
+BENCH_LABEL ?= baseline
+BENCH_OPT_OUT_DIR ?= _tests/benchmark-optimize
+BENCH_OPT_CSV ?= $(BENCH_OPT_OUT_DIR)/benchmark-$(BENCH_LABEL)-$(BENCH_DATETIME).csv
+BENCH_OPT_RAW ?= $(BENCH_OPT_OUT_DIR)/benchmark-$(BENCH_LABEL)-$(BENCH_DATETIME).txt
+BENCH_OPT_CHART ?= $(BENCH_OPT_OUT_DIR)/benchmark-comparison.svg
+BENCH_OPT_CHART_INPUTS ?= $(wildcard $(BENCH_OPT_OUT_DIR)/benchmark-*.csv)
 
 # keep builds pure Go; the sqlite dependency uses modernc.org/sqlite.
 GOENV := CGO_ENABLED=0 GO111MODULE="on"
@@ -57,6 +63,22 @@ test-benchmark-csv: $(BENCH_OUT_DIR)/
 .PHONY: benchmark-chart
 benchmark-chart: $(BENCH_OUT_DIR)/
 	awk -v out="$(BENCH_CHART)" -f scripts/bench-csv-chart.awk $(BENCH_CHART_INPUTS)
+
+# targets below exercise the BenchmarkOptimize* suite (ftsdb_optimize_benchmark_test.go,
+# filetypestats_optimize_benchmark_test.go), which specifically isolates the write-path
+# performance issues found during review (no prepared statements, no PRAGMA tuning, the
+# per-row category subquery, unbounded conn pool, unlocked live-watch writes racing the
+# scan, missing index on fileinfo.updated). Use BENCH_LABEL=baseline before optimizing and
+# BENCH_LABEL=optimized after, then run benchmark-optimize-chart to compare the two.
+.PHONY: test-benchmark-optimize-csv
+test-benchmark-optimize-csv: $(BENCH_OPT_OUT_DIR)/
+	FILETYPESTATS_BENCH_ROOT="$(BENCH_ROOT)" $(GOENV) go test -run '^$$' -bench 'Optimize' -benchtime '$(BENCH_TIME)' -benchmem $(BENCH_PKG) | tee "$(BENCH_OPT_RAW)"
+	awk -v driver="$(BENCH_LABEL)" -v datetime="$(BENCH_DATETIME)" -f scripts/bench-to-csv.awk "$(BENCH_OPT_RAW)" > "$(BENCH_OPT_CSV)"
+	@echo "wrote $(BENCH_OPT_CSV)"
+
+.PHONY: benchmark-optimize-chart
+benchmark-optimize-chart: $(BENCH_OPT_OUT_DIR)/
+	awk -v out="$(BENCH_OPT_CHART)" -v title="Optimization Benchmark Comparison (baseline vs optimized)" -f scripts/bench-csv-chart.awk $(BENCH_OPT_CHART_INPUTS)
 
 .PHONY: test-stress
 test-stress:

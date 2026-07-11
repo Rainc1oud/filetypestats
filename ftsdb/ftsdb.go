@@ -23,6 +23,14 @@ type FileTypeStatsDB struct {
 	DB       *sql.DB
 	IsOpened bool
 	dbmutex  sync.Mutex
+
+	catIDs map[string]int64 // filecat -> cats.id, cached because the category set is small and fixed
+
+	stmtUpsert                    *sql.Stmt
+	stmtDeleteFileStats           *sql.Stmt
+	stmtDeleteOlderThan           *sql.Stmt
+	stmtDeleteOlderThanWithPrefix *sql.Stmt
+	stmtUpdateFilePath            *sql.Stmt
 }
 
 // New returns a DB instance to the sqlite db in existing file or creates it if it doesn't exist and create==true
@@ -67,7 +75,29 @@ func openDB(dbfile string, create bool) (*sql.DB, error) {
 	if db, err = sql.Open("sqlite", dbfile); err != nil {
 		return nil, err
 	}
+	if err = configureConn(db); err != nil {
+		return nil, err
+	}
 	return db, nil
+}
+
+// configureConn applies pool and PRAGMA settings shared by every connection we open.
+// SQLite only ever supports one writer at a time, so we pin the pool to a single
+// connection (avoiding SQLITE_BUSY races between goroutines going through
+// database/sql's default unbounded pool) and pair that with WAL + a busy_timeout
+// so readers/writers block-and-retry briefly instead of failing immediately.
+func configureConn(db *sql.DB) error {
+	db.SetMaxOpenConns(1)
+	for _, pragma := range []string{
+		"PRAGMA journal_mode=WAL;",
+		"PRAGMA synchronous=NORMAL;",
+		"PRAGMA busy_timeout=5000;",
+	} {
+		if _, err := db.Exec(pragma); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (f *FileTypeStatsDB) Open() error {
@@ -76,12 +106,26 @@ func (f *FileTypeStatsDB) Open() error {
 		if f.DB, err = sql.Open("sqlite", f.fileName); err != nil {
 			return err
 		}
+		if err = configureConn(f.DB); err != nil {
+			return err
+		}
+		if err = f.initDB(); err != nil {
+			return err
+		}
 	}
 	f.IsOpened = true
 	return nil
 }
 
 func (f *FileTypeStatsDB) Close() {
+	for _, stmt := range []*sql.Stmt{
+		f.stmtUpsert, f.stmtDeleteFileStats, f.stmtDeleteOlderThan,
+		f.stmtDeleteOlderThanWithPrefix, f.stmtUpdateFilePath,
+	} {
+		if stmt != nil {
+			stmt.Close()
+		}
+	}
 	f.DB.Close()
 	f.IsOpened = false
 }
@@ -95,6 +139,73 @@ func (f *FileTypeStatsDB) initDB() error {
 		return err
 	}
 
+	if err := f.loadCatIDs(); err != nil {
+		return err
+	}
+
+	if err := f.prepareStatements(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// loadCatIDs caches the (small, fixed) filecat -> cats.id mapping in memory so
+// mutation queries don't need a correlated "SELECT id FROM cats WHERE filecat=..."
+// subquery per row.
+func (f *FileTypeStatsDB) loadCatIDs() error {
+	rows, err := f.DB.Query(`SELECT id, filecat FROM cats`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	catIDs := make(map[string]int64)
+	for rows.Next() {
+		var (
+			id      int64
+			filecat string
+		)
+		if err := rows.Scan(&id, &filecat); err != nil {
+			return err
+		}
+		catIDs[filecat] = id
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	f.catIDs = catIDs
+	return nil
+}
+
+const sqlUpsertFileInfo = `INSERT INTO fileinfo(path, size, catid, updated) VALUES(?, ?, ?, ?)
+	ON CONFLICT(path) DO UPDATE SET size=excluded.size, catid=excluded.catid, updated=excluded.updated`
+const sqlDeleteFileStats = `DELETE FROM fileinfo WHERE fileinfo.path GLOB ?||'/*' OR fileinfo.path=?`
+const sqlDeleteOlderThan = `DELETE FROM fileinfo WHERE fileinfo.updated < ?`
+const sqlDeleteOlderThanWithPrefix = `DELETE FROM fileinfo
+	WHERE fileinfo.updated < ?
+		AND (fileinfo.path GLOB ?||'/*' OR fileinfo.path=?)`
+const sqlUpdateFilePath = `UPDATE fileinfo SET path=REPLACE(path, ?, ?), updated=?`
+
+// prepareStatements compiles the hot-path mutation queries once so SQLite doesn't
+// have to re-parse and re-plan them on every call.
+func (f *FileTypeStatsDB) prepareStatements() error {
+	var err error
+	if f.stmtUpsert, err = f.DB.Prepare(sqlUpsertFileInfo); err != nil {
+		return err
+	}
+	if f.stmtDeleteFileStats, err = f.DB.Prepare(sqlDeleteFileStats); err != nil {
+		return err
+	}
+	if f.stmtDeleteOlderThan, err = f.DB.Prepare(sqlDeleteOlderThan); err != nil {
+		return err
+	}
+	if f.stmtDeleteOlderThanWithPrefix, err = f.DB.Prepare(sqlDeleteOlderThanWithPrefix); err != nil {
+		return err
+	}
+	if f.stmtUpdateFilePath, err = f.DB.Prepare(sqlUpdateFilePath); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -140,6 +251,12 @@ func (f *FileTypeStatsDB) createTables() error {
 			id INTEGER PRIMARY KEY,
 			filecat TEXT UNIQUE
 		);`); err != nil {
+		return err
+	}
+
+	// DeleteOlderThan(WithPrefix) filter on updated; without this index that's a full table scan
+	if _, err := f.DB.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_fileinfo_updated ON fileinfo(updated);`); err != nil {
 		return err
 	}
 
@@ -255,15 +372,15 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 
 // UpdateFileStats upserts the file in path with size
 func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) error {
-	// upsert file type stats for dir
+	catid, ok := f.catIDs[filecat]
+	if !ok {
+		return fmt.Errorf("unknown file category %q", filecat)
+	}
 	updated := time.Now().Unix()
-	if _, err := f.DB.Exec((fmt.Sprintf(
-		`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
-			ON CONFLICT(path) DO
-			UPDATE SET size=%d, catid=(SELECT id FROM cats WHERE filecat='%s'), updated=%d`,
-		strings.ReplaceAll(path, "'", "''"), // escape single quotes for SQL
-		size, filecat, updated, size, filecat, updated,
-	))); err != nil {
+
+	f.dbmutex.Lock()
+	defer f.dbmutex.Unlock()
+	if _, err := f.stmtUpsert.Exec(path, size, catid, updated); err != nil {
 		return err
 	}
 	return nil
@@ -272,10 +389,9 @@ func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) err
 // UpdateFilePath updates the file path(s), which needs to happen on a file move
 // if path is a dir the update is recursive
 func (f *FileTypeStatsDB) UpdateFilePath(from, to string) error {
-	from = strings.ReplaceAll(from, "'", "''") // escape single quotes for SQL
-	to = strings.ReplaceAll(to, "'", "''")
-	if _, err := f.DB.Exec((fmt.Sprintf(
-		`UPDATE fileinfo SET path=REPLACE(path, '%s', '%s'), updated=%d;`, from, to, time.Now().Unix()))); err != nil {
+	f.dbmutex.Lock()
+	defer f.dbmutex.Unlock()
+	if _, err := f.stmtUpdateFilePath.Exec(from, to, time.Now().Unix()); err != nil {
 		return err
 	}
 	return nil
@@ -283,8 +399,9 @@ func (f *FileTypeStatsDB) UpdateFilePath(from, to string) error {
 
 // DeleteOlderThan deletes all entries older than (i.e. not updated after) t
 func (f *FileTypeStatsDB) DeleteOlderThan(t time.Time) error {
-	if _, err := f.DB.Exec((fmt.Sprintf(
-		`DELETE FROM fileinfo WHERE fileinfo.updated < %d`, t.Unix()))); err != nil {
+	f.dbmutex.Lock()
+	defer f.dbmutex.Unlock()
+	if _, err := f.stmtDeleteOlderThan.Exec(t.Unix()); err != nil {
 		return err
 	}
 	return nil
@@ -292,11 +409,9 @@ func (f *FileTypeStatsDB) DeleteOlderThan(t time.Time) error {
 
 // DeleteOlderThanWithPrefix deletes all entries older than (i.e. not updated after) t
 func (f *FileTypeStatsDB) DeleteOlderThanWithPrefix(t time.Time, prefix string) error {
-	prefix = strings.ReplaceAll(prefix, "'", "''")
-	if _, err := f.DB.Exec((fmt.Sprintf(
-		`DELETE FROM fileinfo
-		WHERE fileinfo.updated < %d
-			AND (fileinfo.path GLOB '%s/*' OR fileinfo.path='%s')`, t.Unix(), prefix, prefix))); err != nil {
+	f.dbmutex.Lock()
+	defer f.dbmutex.Unlock()
+	if _, err := f.stmtDeleteOlderThanWithPrefix.Exec(t.Unix(), prefix, prefix); err != nil {
 		return err
 	}
 	return nil
@@ -305,11 +420,9 @@ func (f *FileTypeStatsDB) DeleteOlderThanWithPrefix(t time.Time, prefix string) 
 // DeleteFileStats deletes the file/dir in path, if it's a dir, the delete is recursive
 func (f *FileTypeStatsDB) DeleteFileStats(path string) error {
 	// if we delete "<path>/*" OR "<path>" from the DB, we catch automatically the recursive case if it was a dir and existed, otherwise we delete just the file
-	path = strings.ReplaceAll(path, "'", "''") // escape single quotes for SQL
-
-	if _, err := f.DB.Exec((fmt.Sprintf(
-		`DELETE FROM fileinfo WHERE
-			fileinfo.path GLOB '%s/*' OR fileinfo.path='%s'`, path, path))); err != nil {
+	f.dbmutex.Lock()
+	defer f.dbmutex.Unlock()
+	if _, err := f.stmtDeleteFileStats.Exec(path, path); err != nil {
 		return err
 	}
 	return nil
