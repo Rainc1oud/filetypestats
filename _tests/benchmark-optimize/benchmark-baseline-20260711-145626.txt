@@ -1,0 +1,25 @@
+--- FAIL: BenchmarkOptimizeConcurrentScanAndLiveUpdates
+    filetypestats_optimize_benchmark_test.go:64: database is locked (5) (SQLITE_BUSY)
+FAIL
+exit status 1
+FAIL	github.com/Rainc1oud/filetypestats	10.834s
+goos: linux
+goarch: arm64
+pkg: github.com/Rainc1oud/filetypestats/ftsdb
+BenchmarkOptimizeSingleRowUpsert-8                   	       1	     93125 ns/op	         1.000 final_rows	      9736 rows/s	         1.000 target_rows/op	    1064 B/op	      13 allocs/op
+BenchmarkOptimizeBatchCommit200-8                    	       1	    190708 ns/op	       200.0 batch_cap	         1.000 final_rows	      4807 rows/s	         1.000 target_rows/op	   11224 B/op	      18 allocs/op
+BenchmarkOptimizeDeleteOlderThanFullScan-8           	       1	    804542 ns/op	  12266176 rows/s	     10000 table_rows	     152 B/op	       6 allocs/op
+--- FAIL: BenchmarkOptimizeConcurrentBatchAndSingleWriters
+    ftsdb_optimize_benchmark_test.go:140: database is locked (5) (SQLITE_BUSY)
+FAIL
+exit status 1
+FAIL	github.com/Rainc1oud/filetypestats/ftsdb	0.830s
+?   	github.com/Rainc1oud/filetypestats/internal/cmd/testcli	[no test files]
+PASS
+ok  	github.com/Rainc1oud/filetypestats/notifywatch	0.002s
+?   	github.com/Rainc1oud/filetypestats/test	[no test files]
+PASS
+ok  	github.com/Rainc1oud/filetypestats/treestatsquery	0.002s
+?   	github.com/Rainc1oud/filetypestats/types	[no test files]
+?   	github.com/Rainc1oud/filetypestats/utils	[no test files]
+FAIL

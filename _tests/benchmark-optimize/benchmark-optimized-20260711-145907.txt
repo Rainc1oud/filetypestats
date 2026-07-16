@@ -1,0 +1,23 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Rainc1oud/filetypestats
+BenchmarkOptimizeConcurrentScanAndLiveUpdates-8   	       1	3077036379 ns/op	582670744 B/op	  970942 allocs/op
+PASS
+ok  	github.com/Rainc1oud/filetypestats	3.086s
+goos: linux
+goarch: arm64
+pkg: github.com/Rainc1oud/filetypestats/ftsdb
+BenchmarkOptimizeSingleRowUpsert-8                   	       1	     43125 ns/op	         1.000 final_rows	     18141 rows/s	         1.000 target_rows/op	     320 B/op	       9 allocs/op
+BenchmarkOptimizeBatchCommit200-8                    	       1	     67833 ns/op	       200.0 batch_cap	         1.000 final_rows	      9509 rows/s	         1.000 target_rows/op	   11136 B/op	      22 allocs/op
+BenchmarkOptimizeDeleteOlderThanFullScan-8           	       1	     24834 ns/op	 248966788 rows/s	     10000 table_rows	     128 B/op	       6 allocs/op
+BenchmarkOptimizeConcurrentBatchAndSingleWriters-8   	       1	 134514248 ns/op	     29605 rows/s	 1524256 B/op	   46623 allocs/op
+PASS
+ok  	github.com/Rainc1oud/filetypestats/ftsdb	0.227s
+?   	github.com/Rainc1oud/filetypestats/internal/cmd/testcli	[no test files]
+PASS
+ok  	github.com/Rainc1oud/filetypestats/notifywatch	0.008s
+?   	github.com/Rainc1oud/filetypestats/test	[no test files]
+PASS
+ok  	github.com/Rainc1oud/filetypestats/treestatsquery	0.002s
+?   	github.com/Rainc1oud/filetypestats/types	[no test files]
+?   	github.com/Rainc1oud/filetypestats/utils	[no test files]

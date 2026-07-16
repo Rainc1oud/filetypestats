@@ -1,7 +1,7 @@
 package treestatsquery
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/Rainc1oud/filetypestats/ftsdb"
 	"github.com/Rainc1oud/filetypestats/types"
@@ -35,9 +35,9 @@ func FTStatsSum(dbfile string, paths []string) (types.FileTypeStats, error) {
 func FTStatsSumDB(dbconn *ftsdb.FileTypeStatsDB, paths []string) (types.FileTypeStats, error) {
 	var err error
 	if dbconn == nil {
-		err = fmt.Errorf("invalid: dbconn=nil")
+		err = errors.New("invalid: dbconn=nil")
 	} else if !dbconn.IsOpened {
-		err = fmt.Errorf("dbconn is not open")
+		err = errors.New("dbconn is not open")
 	}
 	if err != nil {
 		return types.FileTypeStats{}, err

@@ -2,6 +2,8 @@ package filetypestats
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/Rainc1oud/filetypestats/notifywatch"
@@ -57,15 +59,8 @@ type TDirMonitorsStatus struct {
 	ScanLongestLast  time.Duration // the longest duration of all last dir scans
 }
 
-// TODO: this is a generic function for any map[string]interface{}, handle after generics support is here (go1.18)
 func (dm *TDirMonitors) keys() []string {
-	s := make([]string, len(*dm))
-	i := 0
-	for k := range *dm {
-		s[i] = k
-		i++
-	}
-	return s
+	return slices.Sorted(maps.Keys(*dm))
 }
 
 // NewDirMonitors constructor

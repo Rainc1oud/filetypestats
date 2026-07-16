@@ -163,7 +163,7 @@ func getFileSizeCount(files []string) (uint64, uint) {
 }
 
 func getDB(dbfile string) *ftsdb.FileTypeStatsDB {
-	if dbinstance.DbFileName() == dbfile {
+	if dbinstance != nil && dbinstance.DbFileName() == dbfile {
 		return dbinstance
 	}
 

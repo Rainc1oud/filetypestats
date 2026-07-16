@@ -2,7 +2,6 @@ package ftsdb
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Rainc1oud/filetypestats/types"
@@ -28,32 +27,35 @@ func (f *FileTypeStatsDB) CommitBatch(batchBuffer *types.FTypeStatsBatch) error 
 	return err
 }
 
-// upsertFileStatsMulti upserts the file in path with size
-// best done with transactions: https://stackoverflow.com/a/5009740
+// upsertFileStatsMulti upserts every path in the batch inside a single transaction,
+// reusing the prepared upsert statement per row instead of building one large
+// Sprintf/strings.Join'd SQL string (which was expensive to parse/plan and
+// allocation-heavy at production batch sizes).
 func (f *FileTypeStatsDB) upsertFileStatsMulti(batchBuffer *types.FTypeStatsBatch) error {
 	pathsInfo := batchBuffer.AllElem()
-	qryl := make([]string, len(pathsInfo)+2)
-	qryl[0] = "BEGIN TRANSACTION"
-	i := 1
-	for _, pi := range pathsInfo {
-		qryl[i] = (fmt.Sprintf(
-			`INSERT INTO fileinfo(path, size, catid, updated) VALUES('%s', %d, (SELECT id FROM cats WHERE filecat='%s'), %d)
-				ON CONFLICT(path) DO
-				UPDATE SET size=%d, catid=(SELECT id FROM cats WHERE filecat='%s'), updated=%d`,
-			strings.Replace(pi.Path, "'", "''", -1), pi.NumBytes, pi.FType, time.Now().Unix(),
-			pi.NumBytes, pi.FType, time.Now().Unix(),
-		))
-		i += 1
-	}
-	qryl[i] = "COMMIT;"
-	qry := strings.Join(qryl, ";\n")
+	updated := time.Now().Unix()
 
-	f.dbmutex.Lock() // make sure the transaction block in the query is executed exclusive
+	f.dbmutex.Lock() // make sure the transaction is executed exclusive
 	defer f.dbmutex.Unlock()
 
-	if _, err := f.DB.Exec(qry); err != nil {
+	tx, err := f.DB.Begin()
+	if err != nil {
 		return err
 	}
+	stmt := tx.Stmt(f.stmtUpsert)
+	defer stmt.Close()
 
-	return nil
+	for _, pi := range pathsInfo {
+		catid, ok := f.catIDs[pi.FType]
+		if !ok {
+			tx.Rollback()
+			return fmt.Errorf("unknown file category %q", pi.FType)
+		}
+		if _, err := stmt.Exec(pi.Path, pi.NumBytes, catid, updated); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit()
 }

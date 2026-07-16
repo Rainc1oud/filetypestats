@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="458" viewBox="0 0 1180 458">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#172033}.title{font-size:22px;font-weight:700}.note{font-size:12px;fill:#667085}.bench{font-size:12px;font-weight:700}.label{font-size:11px}.axis{stroke:#d0d5dd;stroke-width:1}.grid{stroke:#eaecf0;stroke-width:1}.barlabel{font-size:11px;fill:#344054}</style>
+<text class="title" x="24" y="34">Optimization Benchmark Comparison (baseline vs optimized)</text>
+<text class="note" x="24" y="56">Horizontal bars use log10(ns/op); shorter is faster. Labels show actual ns/op converted to time.</text>
+<rect x="330" y="26" width="12" height="12" rx="2" fill="#2563eb"/>
+<text class="label" x="348" y="36">baseline</text>
+<rect x="480" y="26" width="12" height="12" rx="2" fill="#dc6803"/>
+<text class="label" x="498" y="36">optimized</text>
+<line class="grid" x1="426.211" y1="74" x2="426.211" y2="396"/>
+<text class="note" text-anchor="middle" x="426.211" y="418">10^5 ns</text>
+<line class="grid" x1="585.25" y1="74" x2="585.25" y2="396"/>
+<text class="note" text-anchor="middle" x="585.25" y="418">10^6 ns</text>
+<line class="grid" x1="744.29" y1="74" x2="744.29" y2="396"/>
+<text class="note" text-anchor="middle" x="744.29" y="418">10^7 ns</text>
+<line class="grid" x1="903.329" y1="74" x2="903.329" y2="396"/>
+<text class="note" text-anchor="middle" x="903.329" y="418">10^8 ns</text>
+<line class="grid" x1="1062.37" y1="74" x2="1062.37" y2="396"/>
+<text class="note" text-anchor="middle" x="1062.37" y="418">10^9 ns</text>
+<line class="axis" x1="330" y1="396" x2="1140" y2="396"/>
+<text class="bench" text-anchor="end" x="316" y="110">OptimizeSingleRowUpsert</text>
+<rect x="330" y="94" width="91.2916" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="427.292" y="106">93.1us</text>
+<rect x="330" y="114" width="38.1189" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="374.119" y="126">43.1us</text>
+<text class="note" x="330" y="140">optimized/baseline: 0.46x time</text>
+<text class="bench" text-anchor="end" x="316" y="166">OptimizeBatchCommit200</text>
+<rect x="330" y="150" width="140.801" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="476.801" y="162">190.7us</text>
+<rect x="330" y="170" width="69.4038" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="405.404" y="182">67.8us</text>
+<text class="note" x="330" y="196">optimized/baseline: 0.36x time</text>
+<text class="bench" text-anchor="end" x="316" y="222">OptimizeDeleteOlderThanFullScan</text>
+<rect x="330" y="206" width="240.229" height="16" rx="3" fill="#2563eb"/>
+<text class="barlabel" x="576.229" y="218">804.5us</text>
+<rect x="330" y="226" width="2" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="338" y="238">24.8us</text>
+<text class="note" x="330" y="252">optimized/baseline: 0.03x time</text>
+<text class="bench" text-anchor="end" x="316" y="278">OptimizeConcurrentScanAndLiveUpdates</text>
+<rect x="330" y="282" width="810" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="1146" y="294">3.08s</text>
+<text class="bench" text-anchor="end" x="316" y="334">OptimizeConcurrentBatchAndSingleWriters</text>
+<rect x="330" y="338" width="593.808" height="16" rx="3" fill="#dc6803"/>
+<text class="barlabel" x="929.808" y="350">134.5ms</text>
+</svg>

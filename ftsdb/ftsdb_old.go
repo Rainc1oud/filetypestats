@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/Rainc1oud/filetypestats/types"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // FTStatsSum returns the summary FileTypeStats for the given paths as a map of FTypeStat per File Type

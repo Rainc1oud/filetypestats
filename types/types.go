@@ -2,16 +2,18 @@ package types
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/Rainc1oud/gogenutils"
 )
 
 var (
 	// "const" string slice to enforce the field order for pretty printing
-	FTypeNames  = func() []string { return []string{"dir", "audio", "application", "image", "other", "total"} }
-	FClassNames = func() []string {
-		return []string{"dir", "other", "application", "archive", "audio", "document", "image", "video"}
-	}
+	fTypeNames  = []string{"dir", "audio", "application", "image", "other", "total"}
+	fClassNames = []string{"dir", "other", "application", "archive", "audio", "document", "image", "video"}
+	FTypeNames  = func() []string { return slices.Clone(fTypeNames) }
+	FClassNames = func() []string { return slices.Clone(fClassNames) }
 	// TODO: somehow the categories seem not to cover all posible types, this might be an issue with h2non/filetype?
 	// var FileCategories = func() []string { return []string{"Audio", "Video", "Image", "Application", "Other"} }
 )
@@ -32,13 +34,13 @@ type FileTypeStats map[string]*FTypeStat
 
 func FileTypeStatsToString(self *FileTypeStats) { self.ToString() }
 func (f *FileTypeStats) ToString() string {
-	s := ""
+	var b strings.Builder
 	for _, k := range FTypeNames() {
 		if st, ok := (*f)[k]; ok {
-			s += fmt.Sprintf("\t%s.sum{size: %8s, count: %5d, path: %-16s}\n", k, gogenutils.ByteCountSI(st.NumBytes), st.FileCount, st.Path)
+			fmt.Fprintf(&b, "\t%s.sum{size: %8s, count: %5d, path: %-16s}\n", k, gogenutils.ByteCountSI(st.NumBytes), st.FileCount, st.Path)
 		}
 	}
-	return s
+	return b.String()
 }
 
 // FTypeStatsBatch is a "stack like" buffer with a pointer to the next free slot

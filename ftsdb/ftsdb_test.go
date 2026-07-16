@@ -2,15 +2,14 @@ package ftsdb
 
 import (
 	"fmt"
-	"github.com/google/go-cmp/cmp"
-	"math/rand"
+	rand "math/rand/v2"
 	"os"
 	"path"
 	"path/filepath"
 	"testing"
 
 	"github.com/Rainc1oud/filetypestats/types"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/google/go-cmp/cmp"
 )
 
 func tmpDB(t *testing.T) (fdb *FileTypeStatsDB) {
@@ -78,16 +77,18 @@ func TestFileTypeStatsDB_FTStatsSum(t *testing.T) {
 	allFiles := make(types.FileTypeStats)
 	selFiles := make(types.FileTypeStats)
 	selPaths := make([]string, 0)
+	rng := rand.New(rand.NewPCG(1, 2))
+	fclasses := types.FClassNames()
 
 	// fill database with test data
 	for n := 0; n < totalFiles; n++ {
-		fsize := uint64(rand.Int63n(9000000))
+		fsize := uint64(rng.Int64N(9000000))
 		fpath := fmt.Sprintf("/somedir/file%04d.tmp", n)
-		fcat := types.FClassNames()[rand.Intn(len(types.FClassNames()))]
+		fcat := fclasses[rng.IntN(len(fclasses))]
 		fdb.UpdateFileStats(fpath, fcat, fsize)
 		allFiles[fpath] = &types.FTypeStat{Path: fpath, FType: fcat, NumBytes: fsize, FileCount: 1}
 		totalFileSize += fsize
-		if rand.Intn(9) > 1 { // add to a selection based on random
+		if rng.IntN(9) > 1 { // add to a selection based on random
 			selFiles[fpath] = &types.FTypeStat{Path: fpath, FType: fcat, NumBytes: fsize, FileCount: 1}
 			selPaths = append(selPaths, fpath)
 		}
@@ -131,5 +132,54 @@ func TestFileTypeStatsDB_FTStatsSum(t *testing.T) {
 			}
 			t.Logf("Test data successfully compared equal:\nFileTypeStatsDB.FTStatsSum() = \n%v", got.ToString())
 		})
+	}
+}
+
+func TestFileTypeStatsDB_BatchDumpMoveAndDelete(t *testing.T) {
+	fdb := tmpDB(t)
+	defer os.RemoveAll(path.Dir(fdb.DbFileName()))
+
+	batch := types.NewFTypeStatsBatch(3)
+	if err := fdb.UpdateFileStatsMulti("/tree/", "dir", 0, batch); err != nil {
+		t.Fatal(err)
+	}
+	if err := fdb.UpdateFileStatsMulti("/tree/image.png", "image", 42, batch); err != nil {
+		t.Fatal(err)
+	}
+	if err := fdb.CommitBatch(batch); err != nil {
+		t.Fatal(err)
+	}
+	if !batch.IsEmpty() {
+		t.Fatal("batch should be empty after commit")
+	}
+
+	dump, err := fdb.FTDumpPaths([]string{"/tree/*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(*dump) != 2 {
+		t.Fatalf("dump length = %d, want 2: %#v", len(*dump), *dump)
+	}
+
+	if err := fdb.UpdateFilePath("/tree/image.png", "/tree/moved.png"); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := fdb.FTStatsSum([]string{"/tree/moved.png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats["image"].FileCount != 1 || stats["image"].NumBytes != 42 {
+		t.Fatalf("moved file stats = %#v, want one 42-byte image", stats["image"])
+	}
+
+	if err := fdb.DeleteFileStats("/tree/moved.png"); err != nil {
+		t.Fatal(err)
+	}
+	stats, err = fdb.FTStatsSum([]string{"/tree/*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := stats["image"]; ok {
+		t.Fatalf("image stats still present after delete: %#v", stats["image"])
 	}
 }
