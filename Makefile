@@ -48,6 +48,11 @@ clean:
 test:
 	$(GOENV) go test -v ./...
 
+# Deliberately separate from test and CI: the race detector requires CGO.
+.PHONY: test-race
+test-race:
+	CGO_ENABLED=1 GO111MODULE="on" go test -race ./...
+
 .PHONY: test-benchmark
 test-benchmark: test-benchmark-csv
 

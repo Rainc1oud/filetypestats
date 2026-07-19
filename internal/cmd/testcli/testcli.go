@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -140,7 +141,7 @@ func watch(dirs []string, file string) {
 		exiterr(err)
 	}
 	fmt.Printf("Watching dirs %v for changes (blocking), press ctrl-c to stop; open a second instance to query the database (read-only)", dirs)
-	fts.WatchAll()
+	fts.WatchAll(context.Background())
 }
 
 func printstats(ftstats types.FileTypeStats) {

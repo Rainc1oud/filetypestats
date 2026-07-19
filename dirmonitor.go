@@ -1,9 +1,10 @@
 package filetypestats
 
 import (
+	"errors"
 	"fmt"
-	"maps"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/Rainc1oud/filetypestats/notifywatch"
@@ -11,197 +12,225 @@ import (
 	"github.com/rjeczalik/notify"
 )
 
-type TDirMonitor struct {
-	notifywatch.NotifyWatcher // embed NotifyWatcher, because TDirMonitor is just a Watcer with added state and access/info methods
-	tstarted                  time.Time
-	tfinished                 time.Time
-	dlastscan                 time.Duration
-	dirty                     bool
+type DirMonitor struct {
+	*notifywatch.NotifyWatcher
+
+	mu       sync.RWMutex
+	started  time.Time
+	finished time.Time
+	duration time.Duration
+	dirty    bool
 }
 
-func newDirMonitor(dir string, recursive bool, handler notifywatch.NotifyHandlerFun, events ...notify.Event) *TDirMonitor {
-	dm := &TDirMonitor{
-		*notifywatch.NewNotifyWatcher(dir, recursive, handler, events...),
-		time.Time{},
-		time.Time{},
-		time.Duration(0),
-		false,
+func newDirMonitor(dir string, recursive bool, handler notifywatch.EventHandler, events ...notify.Event) *DirMonitor {
+	return &DirMonitor{NotifyWatcher: notifywatch.NewNotifyWatcher(dir, recursive, handler, events...)}
+}
+
+func (m *DirMonitor) scanRunning() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.started.After(m.finished)
+}
+
+func (m *DirMonitor) tryScanStart() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.started.After(m.finished) {
+		return false
 	}
-	return dm
+	m.started = time.Now()
+	m.dirty = true
+	return true
 }
 
-func (t *TDirMonitor) scanRunning() bool {
-	return t.tstarted.After(t.tfinished)
-}
-func (t *TDirMonitor) scanStart() {
-	t.tstarted = time.Now()
-}
-func (t *TDirMonitor) scanFinish() {
-	t.tfinished = time.Now()
-	t.dlastscan = time.Since(t.tstarted)
-}
-func (t *TDirMonitor) scanStarted() time.Time {
-	return t.tstarted
-}
-func (t *TDirMonitor) scanFinished() time.Time {
-	return t.tfinished
-}
-func (t *TDirMonitor) isDirty() bool {
-	return t.dirty
+func (m *DirMonitor) scanFinish() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.finished = time.Now()
+	m.duration = m.finished.Sub(m.started)
+	m.dirty = false
 }
 
-type TDirMonitors map[string]*TDirMonitor
+func (m *DirMonitor) status() (time.Time, time.Time, time.Duration, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.started, m.finished, m.duration, m.dirty
+}
 
-type TDirMonitorsStatus struct {
+type DirMonitors struct {
+	mu       sync.RWMutex
+	monitors map[string]*DirMonitor
+}
+
+type DirMonitorsStatus struct {
 	Dirty            bool
 	ScanStartedLast  time.Time
 	ScanFinishedLast time.Time
-	ScanLongestLast  time.Duration // the longest duration of all last dir scans
+	ScanLongestLast  time.Duration
 }
 
-func (dm *TDirMonitors) keys() []string {
-	return slices.Sorted(maps.Keys(*dm))
+func NewDirMonitors() *DirMonitors {
+	return &DirMonitors{monitors: make(map[string]*DirMonitor)}
 }
 
-// NewDirMonitors constructor
-func NewDirMonitors() *TDirMonitors {
-	tds := make(TDirMonitors)
-	return &tds
-}
-
-func (dm *TDirMonitors) getItem(dir string) *TDirMonitor {
-	if v, ok := (*dm)[dir]; ok {
-		return v
+func (m *DirMonitors) snapshot() map[string]*DirMonitor {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make(map[string]*DirMonitor, len(m.monitors))
+	for dir, monitor := range m.monitors {
+		result[dir] = monitor
 	}
-	return &TDirMonitor{
-		notifywatch.NotifyWatcher{},
-		time.Time{},
-		time.Time{},
-		time.Duration(0),
-		false,
-	}
+	return result
 }
 
-func (dm *TDirMonitors) Status() *TDirMonitorsStatus {
-	dms := &TDirMonitorsStatus{
-		Dirty:            false,
-		ScanStartedLast:  time.Time{},
-		ScanFinishedLast: time.Time{},
-		ScanLongestLast:  time.Duration(0),
+func (m *DirMonitors) Monitors() []*DirMonitor {
+	snapshot := m.snapshot()
+	result := make([]*DirMonitor, 0, len(snapshot))
+	for _, monitor := range snapshot {
+		result = append(result, monitor)
 	}
-	for _, k := range dm.keys() {
-		if dms.ScanStartedLast.Before((*dm)[k].scanStarted()) {
-			dms.ScanStartedLast = (*dm)[k].scanStarted()
+	return result
+}
+
+func (m *DirMonitors) Status() *DirMonitorsStatus {
+	result := &DirMonitorsStatus{}
+	for _, monitor := range m.Monitors() {
+		started, finished, duration, dirty := monitor.status()
+		if result.ScanStartedLast.Before(started) {
+			result.ScanStartedLast = started
 		}
-		if dms.ScanFinishedLast.Before((*dm)[k].scanFinished()) {
-			dms.ScanFinishedLast = (*dm)[k].scanFinished()
+		if result.ScanFinishedLast.Before(finished) {
+			result.ScanFinishedLast = finished
 		}
-		if dms.ScanLongestLast < (*dm)[k].dlastscan {
-			dms.ScanLongestLast = (*dm)[k].dlastscan
+		if result.ScanLongestLast < duration {
+			result.ScanLongestLast = duration
 		}
-		dms.Dirty = dms.Dirty || (*dm)[k].isDirty()
+		result.Dirty = result.Dirty || dirty
 	}
-	return dms
+	return result
 }
 
-// overlappedDirs returns all dirs that should be removed from the set {dir, Dirs()} because they are overlapped by a parent from the set (i.e. the returned list contains all entries that are under other entries in dir hierarchy)
-func (dm *TDirMonitors) overlappedDirs(dir string) []string {
-	alldirs := append(dm.Dirs(), dir)
-	filtdirs := ggu.FilterCommonRootDirs(alldirs)
-	rmdirs := []string{}
-	for _, d := range alldirs {
-		if !ggu.InSlice(d, filtdirs) {
-			rmdirs = append(rmdirs, d)
-		}
+func (m *DirMonitors) dirsLocked() []string {
+	dirs := make([]string, 0, len(m.monitors))
+	for dir := range m.monitors {
+		dirs = append(dirs, dir)
 	}
-	return rmdirs
+	slices.Sort(dirs)
+	return dirs
 }
 
-// AddDir adds dir to the DirMonitors collection with a new DirMonitor instance, while removing all overlapping dirs
-func (dm *TDirMonitors) AddDir(dir string, recursive bool, handler notifywatch.NotifyHandlerFun, events ...notify.Event) *TDirMonitor {
-	unwanted := dm.overlappedDirs(dir)
+func (m *DirMonitors) overlappedDirsLocked(dir string) []string {
+	allDirs := append(m.dirsLocked(), dir)
+	filtered := ggu.FilterCommonRootDirs(allDirs)
+	var result []string
+	for _, candidate := range allDirs {
+		if !ggu.InSlice(candidate, filtered) {
+			result = append(result, candidate)
+		}
+	}
+	return result
+}
+
+func (m *DirMonitors) AddDir(dir string, recursive bool, handler notifywatch.EventHandler, events ...notify.Event) *DirMonitor {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	unwanted := m.overlappedDirsLocked(dir)
 	if ggu.InSlice(dir, unwanted) {
 		unwanted = ggu.RemoveFromStringSlice(dir, unwanted)
 	}
-	if len(unwanted) > 0 {
-		dm.RemoveDirs(unwanted...)
-		return nil
+	for _, unwantedDir := range unwanted {
+		if monitor := m.monitors[unwantedDir]; monitor != nil && monitor.IsWatching() {
+			return nil
+		}
+		delete(m.monitors, unwantedDir)
 	}
-	if v, ok := (*dm)[dir]; ok {
-		return v // ignore if exists
+	if existing := m.monitors[dir]; existing != nil {
+		return existing
 	}
-	(*dm)[dir] = newDirMonitor(dir, recursive, handler, events...)
-	return (*dm)[dir]
+	monitor := newDirMonitor(dir, recursive, handler, events...)
+	m.monitors[dir] = monitor
+	return monitor
 }
 
-// RemoveDirs removes dirs from the container
-func (dm *TDirMonitors) RemoveDirs(dirs ...string) error {
-	errs := ggu.NewErrors()
-	for _, d := range dirs {
-		errs.AddIf(dm.RemoveDir(d))
+func (m *DirMonitors) RemoveDirs(dirs ...string) error {
+	var errs []error
+	for _, dir := range dirs {
+		errs = append(errs, m.RemoveDir(dir))
 	}
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
-// RemoveDir removes dir from the container
-func (dm *TDirMonitors) RemoveDir(dir string) error {
-	if _, ok := (*dm)[dir]; !ok {
+func (m *DirMonitors) RemoveDir(dir string) error {
+	monitor := m.get(dir)
+	if monitor == nil {
 		return fmt.Errorf("monitor for %s doesn't exist, watcher not removed", dir)
 	}
-	err := (*dm)[dir].Stop() // TBC: do we need to handle the error? probably not, because it's basically a warning (channel already closed)
-	delete(*dm, dir)         // no need to check existence, delete non-existing is no-op
-	return err
-}
-
-// Dirs returns a slice of all registered dirs
-func (dm *TDirMonitors) Dirs() []string {
-	return dm.keys()
-}
-
-func (dm *TDirMonitors) hasElem(key string) bool {
-	_, ok := (*dm)[key]
-	return ok
-}
-
-// Contains returns whether dir is contained in the registered dirs
-func (dm *TDirMonitors) Contains(dir string) bool {
-	return dm.hasElem(dir)
-}
-
-// ScanRunning reports whether a ssscan on dir is currently running
-func (dm *TDirMonitors) ScanRunning(dir string) bool {
-	return dm.getItem(dir).scanRunning()
-}
-
-// ScanFinish updates start time for dir
-func (dm *TDirMonitors) ScanStart(dir string) {
-	if v, ok := (*dm)[dir]; ok {
-		v.scanStart()
-		v.dirty = true
+	if err := monitor.Stop(); err != nil {
+		return err
 	}
-	// completely ignored if dir is not registered (= a pain for debugging?)
-}
-
-// ScanFinish updates finished time for dir
-func (dm *TDirMonitors) ScanFinish(dir string) {
-	if v, ok := (*dm)[dir]; ok {
-		v.scanFinish()
-		v.dirty = false
+	m.mu.Lock()
+	if m.monitors[dir] == monitor {
+		delete(m.monitors, dir)
 	}
-	// completely ignored if dir is not registered (= a pain for debugging?)
+	m.mu.Unlock()
+	return nil
 }
 
-// ScanStarted returns the time the last scan was started
-func (dm *TDirMonitors) ScanStarted(dir string) time.Time {
-	return dm.getItem(dir).scanStarted()
+func (m *DirMonitors) Dirs() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.dirsLocked()
 }
 
-// ScanFinished returns the time the last scan was started
-func (dm *TDirMonitors) ScanFinished(dir string) time.Time {
-	return dm.getItem(dir).scanFinished()
+func (m *DirMonitors) get(dir string) *DirMonitor {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.monitors[dir]
 }
 
-// IsDirty reports dirty status, i.e. if the DB for dir is up to date or being updated
-func (dm *TDirMonitors) IsDirty(dir string) bool {
-	return dm.getItem(dir).isDirty()
+func (m *DirMonitors) Contains(dir string) bool { return m.get(dir) != nil }
+
+func (m *DirMonitors) ScanRunning(dir string) bool {
+	monitor := m.get(dir)
+	return monitor != nil && monitor.scanRunning()
 }
+
+func (m *DirMonitors) tryScanStart(dir string) bool {
+	monitor := m.get(dir)
+	return monitor != nil && monitor.tryScanStart()
+}
+
+func (m *DirMonitors) ScanFinish(dir string) {
+	if monitor := m.get(dir); monitor != nil {
+		monitor.scanFinish()
+	}
+}
+
+func (m *DirMonitors) ScanStarted(dir string) time.Time {
+	if monitor := m.get(dir); monitor != nil {
+		started, _, _, _ := monitor.status()
+		return started
+	}
+	return time.Time{}
+}
+
+func (m *DirMonitors) ScanFinished(dir string) time.Time {
+	if monitor := m.get(dir); monitor != nil {
+		_, finished, _, _ := monitor.status()
+		return finished
+	}
+	return time.Time{}
+}
+
+func (m *DirMonitors) IsDirty(dir string) bool {
+	if monitor := m.get(dir); monitor != nil {
+		_, _, _, dirty := monitor.status()
+		return dirty
+	}
+	return false
+}
+
+// Deprecated compatibility aliases. New code should use the idiomatic names.
+type TDirMonitor = DirMonitor
+type TDirMonitors = DirMonitors
+type TDirMonitorsStatus = DirMonitorsStatus
