@@ -38,6 +38,10 @@ type TreeStatsWatcher struct {
 	moves            tMoveMap
 	ftsDB            *ftsdb.FileTypeStatsDB
 	eventHandler     notifywatch.EventHandler
+	watchMu          sync.Mutex
+	watchCtx         context.Context
+	watchWG          sync.WaitGroup
+	watchErrors      []error
 }
 
 // NewTreeStatsWatcher is the top level constructor featuring:
@@ -66,6 +70,12 @@ func (tsw *TreeStatsWatcher) AddWatch(dirs ...string) error {
 	for _, d := range dirs {
 		tsw.AddDir(d, true, tsw.onFileChanged, defaultNotifyEvents...) // TBC: do we need to make this configurable on a higher level?
 		errs.AddIf(tsw.ScanDirAsync(d))
+		tsw.watchMu.Lock()
+		running := tsw.watchCtx != nil && tsw.watchCtx.Err() == nil
+		tsw.watchMu.Unlock()
+		if running {
+			errs.AddIf(tsw.StartWatcher(d))
+		}
 	}
 	return errs.Err()
 }
@@ -75,28 +85,28 @@ func (tsw *TreeStatsWatcher) WatchAll(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("watch all: nil context")
 	}
-	monitors := tsw.Monitors()
-	if len(monitors) == 0 {
-		<-ctx.Done()
-		return nil
+	tsw.watchMu.Lock()
+	if tsw.watchCtx != nil {
+		tsw.watchMu.Unlock()
+		return errors.New("watch all is already running")
 	}
-	errCh := make(chan error, len(monitors))
-	var wg sync.WaitGroup
-	for _, monitor := range monitors {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := monitor.Watch(ctx); err != nil {
-				errCh <- err
-			}
-		}()
+	tsw.watchCtx = ctx
+	tsw.watchErrors = nil
+	tsw.watchMu.Unlock()
+	for _, dir := range tsw.Dirs() {
+		if err := tsw.StartWatcher(dir); err != nil {
+			tsw.watchMu.Lock()
+			tsw.watchErrors = append(tsw.watchErrors, err)
+			tsw.watchMu.Unlock()
+		}
 	}
-	wg.Wait()
-	close(errCh)
-	var errs []error
-	for err := range errCh {
-		errs = append(errs, err)
-	}
+	<-ctx.Done()
+	_ = tsw.StopWatchAll()
+	tsw.watchWG.Wait()
+	tsw.watchMu.Lock()
+	errs := append([]error(nil), tsw.watchErrors...)
+	tsw.watchCtx = nil
+	tsw.watchMu.Unlock()
 	return errors.Join(errs...)
 }
 
@@ -251,6 +261,35 @@ func (tsw *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
 		return nil
 	}
 	return fmt.Errorf("unhandled event %v for %s", eventInfo, (*eventInfo).Path())
+}
+
+// StartWatcher starts a registered watcher under the WatchAll context.
+func (tsw *TreeStatsWatcher) StartWatcher(dir string) error {
+	monitor := tsw.get(dir)
+	if monitor == nil {
+		return fmt.Errorf("refusing to start non-existing watcher for %s", dir)
+	}
+	tsw.watchMu.Lock()
+	ctx := tsw.watchCtx
+	if ctx == nil || ctx.Err() != nil {
+		tsw.watchMu.Unlock()
+		return errors.New("watch all is not running")
+	}
+	if monitor.IsWatching() {
+		tsw.watchMu.Unlock()
+		return nil
+	}
+	tsw.watchWG.Add(1)
+	tsw.watchMu.Unlock()
+	go func() {
+		defer tsw.watchWG.Done()
+		if err := monitor.Watch(ctx); err != nil {
+			tsw.watchMu.Lock()
+			tsw.watchErrors = append(tsw.watchErrors, err)
+			tsw.watchMu.Unlock()
+		}
+	}()
+	return nil
 }
 
 // StopWatcher stops and removes the watcher for dir. It is idempotent for a
