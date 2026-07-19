@@ -229,8 +229,3 @@ func (m *DirMonitors) IsDirty(dir string) bool {
 	}
 	return false
 }
-
-// Deprecated compatibility aliases. New code should use the idiomatic names.
-type TDirMonitor = DirMonitor
-type TDirMonitors = DirMonitors
-type TDirMonitorsStatus = DirMonitorsStatus
