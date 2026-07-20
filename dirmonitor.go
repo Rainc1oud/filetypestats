@@ -124,7 +124,7 @@ func (m *DirMonitors) overlappedDirsLocked(dir string) []string {
 	filtered := ggu.FilterCommonRootDirs(allDirs)
 	var result []string
 	for _, candidate := range allDirs {
-		if !ggu.InSlice(candidate, filtered) {
+		if !slices.Contains(filtered, candidate) {
 			result = append(result, candidate)
 		}
 	}
@@ -135,7 +135,7 @@ func (m *DirMonitors) AddDir(dir string, recursive bool, handler notifywatch.Eve
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	unwanted := m.overlappedDirsLocked(dir)
-	if ggu.InSlice(dir, unwanted) {
+	if slices.Contains(unwanted, dir) {
 		unwanted = ggu.RemoveFromStringSlice(dir, unwanted)
 	}
 	for _, unwantedDir := range unwanted {
