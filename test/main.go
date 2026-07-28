@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -60,7 +61,7 @@ func main() {
 
 	fmt.Println("Starting to watch, press ctrl+c to exit...")
 	fmt.Printf("Manipulate the contents of %v to test inotify\n", tsw.Dirs())
-	tsw.WatchAll()
+	tsw.WatchAll(context.Background())
 	fmt.Println("All watchers finished")
 }
 

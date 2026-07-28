@@ -3,6 +3,8 @@ package filetypestats
 // TODO: allow to optionally only do direct scan, without db or inotify, to supersede legacy code
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -30,13 +32,16 @@ type tMoveInfo struct {
 }
 type tMoveMap map[uint32]*tMoveInfo
 type TreeStatsWatcher struct {
-	TDirMonitors     // embed this map, because a TreeStatsWatcher is just TDirMonitors with added state
+	*DirMonitors
+	mu               sync.RWMutex
 	lastScanDuration time.Duration
 	moves            tMoveMap
 	ftsDB            *ftsdb.FileTypeStatsDB
-	eventHandler     notifywatch.NotifyHandlerFun
-	wg               *sync.WaitGroup
-	batchBuffer      *types.FTypeStatsBatch // as TSW attribute and not instantiated in e.g. Scan() because it's probably less load on GC
+	eventHandler     notifywatch.EventHandler
+	watchMu          sync.Mutex
+	watchCtx         context.Context
+	watchWG          sync.WaitGroup
+	watchErrors      []error
 }
 
 // NewTreeStatsWatcher is the top level constructor featuring:
@@ -48,13 +53,9 @@ type TreeStatsWatcher struct {
 // If dirs is empty, you can add watches later with AddWatch() or AddDir()
 func NewTreeStatsWatcher(dirs []string, dbconn *ftsdb.FileTypeStatsDB) (*TreeStatsWatcher, error) {
 	tsw := &TreeStatsWatcher{
-		*NewDirMonitors(),
-		time.Duration(0),
-		make(tMoveMap),
-		dbconn,
-		nil,
-		&sync.WaitGroup{},
-		types.NewFTypeStatsBatch(pathInfoBatchSize),
+		DirMonitors: NewDirMonitors(),
+		moves:       make(tMoveMap),
+		ftsDB:       dbconn,
 	}
 	tsw.eventHandler = tsw.onFileChanged // set default event handler
 	err := tsw.AddWatch(dirs...)
@@ -69,40 +70,72 @@ func (tsw *TreeStatsWatcher) AddWatch(dirs ...string) error {
 	for _, d := range dirs {
 		tsw.AddDir(d, true, tsw.onFileChanged, defaultNotifyEvents...) // TBC: do we need to make this configurable on a higher level?
 		errs.AddIf(tsw.ScanDirAsync(d))
+		tsw.watchMu.Lock()
+		running := tsw.watchCtx != nil && tsw.watchCtx.Err() == nil
+		tsw.watchMu.Unlock()
+		if running {
+			errs.AddIf(tsw.StartWatcher(d))
+		}
 	}
 	return errs.Err()
 }
 
-// WatchAll starts all registered dirs with the notify watcher (ignoring already started ones)
-func (tsw *TreeStatsWatcher) WatchAll() error {
-	errs := ggu.NewErrors()
-	for _, d := range tsw.Dirs() {
-		errs.AddIf(tsw.StartWatcher(d))
+// WatchAll runs all currently registered watchers until ctx is cancelled.
+func (tsw *TreeStatsWatcher) WatchAll(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("watch all: nil context")
 	}
-	tsw.wg.Wait() // wait until last watcher finishes
-	return errs.Err()
+	tsw.watchMu.Lock()
+	if tsw.watchCtx != nil {
+		tsw.watchMu.Unlock()
+		return errors.New("watch all is already running")
+	}
+	tsw.watchCtx = ctx
+	tsw.watchErrors = nil
+	tsw.watchMu.Unlock()
+	for _, dir := range tsw.Dirs() {
+		if err := tsw.StartWatcher(dir); err != nil {
+			tsw.watchMu.Lock()
+			tsw.watchErrors = append(tsw.watchErrors, err)
+			tsw.watchMu.Unlock()
+		}
+	}
+	<-ctx.Done()
+	_ = tsw.StopWatchAll()
+	tsw.watchWG.Wait()
+	tsw.watchMu.Lock()
+	errs := append([]error(nil), tsw.watchErrors...)
+	tsw.watchCtx = nil
+	tsw.watchMu.Unlock()
+	return errors.Join(errs...)
 }
 
 // StopAll stops all registered dirs with the notify watcher
 func (tsw *TreeStatsWatcher) StopWatchAll() error {
-	errs := ggu.NewErrors()
-	for _, v := range tsw.TDirMonitors {
-		errs.AddIf(v.Stop())
+	var errs []error
+	for _, monitor := range tsw.Monitors() {
+		errs = append(errs, monitor.Stop())
 	}
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
 // ScanSync does a full scan over all registered dirs synchronously and updates the database
 // This can take a long time (minutes to hours) to complete
 func (tsw *TreeStatsWatcher) ScanAllSync() error {
+	return tsw.ScanAll(context.Background())
+}
+
+func (tsw *TreeStatsWatcher) ScanAll(ctx context.Context) error {
 	errs := ggu.NewErrors()
 	tb := time.Now()
 	for _, d := range tsw.Dirs() {
-		if err := tsw.ScanDir(d); err != nil {
+		if err := tsw.ScanDirContext(ctx, d); err != nil {
 			errs.AddIf(fmt.Errorf("error [%s]: %s", d, err.Error()))
 		}
 	}
+	tsw.mu.Lock()
 	tsw.lastScanDuration = time.Since(tb)
+	tsw.mu.Unlock()
 	// tsw.ftsDB.DeleteOlderThan(tsw.lastScanStarted) // delete all entries from before the scan (i.e. not updated during the scan, because this means they were deleted)
 	return errs.Err()
 }
@@ -110,11 +143,8 @@ func (tsw *TreeStatsWatcher) ScanAllSync() error {
 // ScanDirAsync scans dir asynchronously
 // TODO: add channel to make interuption possible?
 func (tsw *TreeStatsWatcher) ScanDirAsync(dir string) error {
-	if tsw.ScanRunning(dir) {
-		return fmt.Errorf("warning: skipping scan of %s because it is already running", dir)
-	}
 	go func() {
-		tsw.ScanDir(dir)
+		_ = tsw.ScanDirContext(context.Background(), dir)
 	}()
 	return nil
 }
@@ -122,16 +152,26 @@ func (tsw *TreeStatsWatcher) ScanDirAsync(dir string) error {
 // scanDir scans the given dir recursively and updates the database
 // This can take a long time (minutes to hours) to complete
 func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
+	return tsw.ScanDirContext(context.Background(), dir)
+}
 
-	if tsw.ScanRunning(dir) {
-		return fmt.Errorf("warning: skipping scan of %s because it is already running", dir)
+func (tsw *TreeStatsWatcher) ScanDirContext(ctx context.Context, dir string) error {
+	if ctx == nil {
+		return errors.New("scan dir: nil context")
 	}
 
-	tsw.ScanStart(dir)
+	if !tsw.tryScanStart(dir) {
+		return fmt.Errorf("warning: skipping scan of %s because it is already running", dir)
+	}
+	defer tsw.ScanFinish(dir)
+	batchBuffer := types.NewFTypeStatsBatch(pathInfoBatchSize)
 
 	err := godirwalk.Walk(dir, &godirwalk.Options{
 		AllowNonDirectory: true,
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			var (
 				err   error = nil
 				fi    fs.FileInfo
@@ -140,12 +180,12 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 
 			if de.IsDir() {
 				ftype = "dir"
-				tsw.ftsDB.UpdateFileStatsMulti(osPathname+"/", ftype, 0, tsw.batchBuffer) // add / to make filtering more consistent in SELECT queries
+				tsw.ftsDB.UpdateFileStatsMulti(osPathname+"/", ftype, 0, batchBuffer) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()), tsw.batchBuffer)
+						tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()), batchBuffer)
 						return nil
 					}
 				}
@@ -163,19 +203,21 @@ func (tsw *TreeStatsWatcher) ScanDir(dir string) error {
 		},
 	})
 
-	tsw.ftsDB.CommitBatch(tsw.batchBuffer) // commit any "in-flight" batch
-	tsw.ftsDB.DeleteOlderThanWithPrefix(tsw.ScanStarted(dir), dir)
-	tsw.ScanFinish(dir)
-
+	if err := tsw.ftsDB.CommitBatch(batchBuffer); err != nil {
+		return err
+	}
 	if err != nil {
 		return err
 	}
+	tsw.ftsDB.DeleteOlderThanWithPrefix(tsw.ScanStarted(dir), dir)
 	return nil
 }
 
 // onFileChanged is the inotify event handler passed to the notify watcher
 // for now we handle create, remove, write (this is like modify but guaranteed on all platforms)
 func (tsw *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
+	tsw.mu.Lock()
+	defer tsw.mu.Unlock()
 	cookie := (*eventInfo).Sys().(*unix.InotifyEvent).Cookie // this is a kind of hash to relate the From event to the To event
 	minfo, ok := tsw.moves[cookie]
 	if !ok {
@@ -221,43 +263,53 @@ func (tsw *TreeStatsWatcher) onFileChanged(eventInfo *notify.EventInfo) error {
 	return fmt.Errorf("unhandled event %v for %s", eventInfo, (*eventInfo).Path())
 }
 
-// StartWatcher starts the dir watcher in the background (or returns an error if not available)
+// StartWatcher starts a registered watcher under the WatchAll context.
 func (tsw *TreeStatsWatcher) StartWatcher(dir string) error {
-	w, ok := tsw.TDirMonitors[dir]
-	if !ok {
+	monitor := tsw.get(dir)
+	if monitor == nil {
 		return fmt.Errorf("refusing to start non-existing watcher for %s", dir)
 	}
-	if w.IsWatching() { // avoid starting a watcher that is already watching
-		return fmt.Errorf("refusing to start already running watcher for %s", dir)
+	tsw.watchMu.Lock()
+	ctx := tsw.watchCtx
+	if ctx == nil || ctx.Err() != nil {
+		tsw.watchMu.Unlock()
+		return errors.New("watch all is not running")
 	}
-	tsw.wg.Add(1)
-	go func() { // we can do without passing wg because it's a pointer we don't change?
-		_ = w.Watch() // TODO: error handling?
-		tsw.wg.Done()
-		delete(tsw.TDirMonitors, dir)
+	if monitor.IsWatching() {
+		tsw.watchMu.Unlock()
+		return nil
+	}
+	tsw.watchWG.Add(1)
+	tsw.watchMu.Unlock()
+	go func() {
+		defer tsw.watchWG.Done()
+		if err := monitor.Watch(ctx); err != nil {
+			tsw.watchMu.Lock()
+			tsw.watchErrors = append(tsw.watchErrors, err)
+			tsw.watchMu.Unlock()
+		}
 	}()
 	return nil
 }
 
-// StopWatcher stops and removes the watcher for dir
-// (The DirMonitor is removed entirely, because we have no way to re-start a stopped watcher, so its existence becomes meaningless after stopping)
+// StopWatcher stops and removes the watcher for dir. It is idempotent for a
+// registered watcher because NotifyWatcher.Stop is idempotent.
 func (tsw *TreeStatsWatcher) StopWatcher(dir string) error {
-	w, ok := tsw.TDirMonitors[dir]
-	if !ok {
+	if !tsw.Contains(dir) {
 		return fmt.Errorf("refusing to stop non-existing watcher for %s", dir)
-	}
-	if !w.IsWatching() { // avoid starting a watcher that is already watching
-		return fmt.Errorf("refusing to stop already stopped watcher for %s", dir)
 	}
 	return tsw.RemoveDir(dir)
 }
 
 func (tsw *TreeStatsWatcher) ScanDurationLast() time.Duration {
-	sd := tsw.lastScanDuration
-	for _, v := range tsw.TDirMonitors { // if a single dir scan duration was longer than the last full scan, we use the largest value
-		if sd < v.dlastscan {
-			sd = v.dlastscan
+	tsw.mu.RLock()
+	duration := tsw.lastScanDuration
+	tsw.mu.RUnlock()
+	for _, monitor := range tsw.Monitors() {
+		_, _, scanDuration, _ := monitor.status()
+		if duration < scanDuration {
+			duration = scanDuration
 		}
 	}
-	return sd
+	return duration
 }

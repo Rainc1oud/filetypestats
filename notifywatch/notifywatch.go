@@ -1,92 +1,111 @@
 package notifywatch
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/Rainc1oud/filetypestats/utils"
 	"github.com/rjeczalik/notify"
 )
 
-type NotifyHandlerFun func(*notify.EventInfo) error
+type EventHandler func(*notify.EventInfo) error
 
-/*** inotify watcher with handler for one (recursive) file tree ***/
-
+// NotifyWatcher owns one filesystem notification registration.
 type NotifyWatcher struct {
-	watchdir  string
+	watchDir  string
 	recursive bool
-	watching  bool
-	eventInfo chan notify.EventInfo
 	events    []notify.Event
-	handler   NotifyHandlerFun
+	handler   EventHandler
+
+	mu      sync.RWMutex
+	running bool
+	cancel  context.CancelFunc
+	done    chan struct{}
 }
 
-// NewNotifyWatcher watches the given dir and calls handler on inotify events
-// a dir ending in "/*" will result in a recursive watch
-func NewNotifyWatcher(dir string, recursive bool, handler NotifyHandlerFun, events ...notify.Event) *NotifyWatcher {
-	nw := &NotifyWatcher{
-		eventInfo: make(chan notify.EventInfo, 1), // buffered to ensure no events are dropped
-		events:    events,
-		watchdir:  dir,
+func NewNotifyWatcher(dir string, recursive bool, handler EventHandler, events ...notify.Event) *NotifyWatcher {
+	return &NotifyWatcher{
+		watchDir:  dir,
 		recursive: recursive,
-		watching:  false,
+		events:    append([]notify.Event(nil), events...),
 		handler:   handler,
 	}
-	return nw
 }
 
-// Watch starts an initialised notify watcher (blockings)
-func (nw *NotifyWatcher) Watch() error {
-	if nw.watchdir == "" {
+// Watch blocks until ctx is cancelled. It returns only after the underlying
+// notify registration has been removed.
+func (w *NotifyWatcher) Watch(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("refusing to start watcher with nil context")
+	}
+	if w.watchDir == "" {
 		return errors.New("refusing to start empty watcher")
 	}
-	var dir string
-	var err error
-	if nw.recursive {
-		dir = utils.Dir3Dot(nw.watchdir)
-	} else {
-		dir = nw.watchdir
+
+	w.mu.Lock()
+	if w.running {
+		w.mu.Unlock()
+		return fmt.Errorf("watcher for %s is already running", w.watchDir)
 	}
-	nw.watching = true
-	if err = notify.Watch(dir, nw.eventInfo, nw.events...); err != nil { // blocking function
-		// log.Printf("error: %s", err.Error())
-		nw.watching = false
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	w.running = true
+	w.cancel = cancel
+	w.done = done
+	w.mu.Unlock()
+
+	defer func() {
+		cancel()
+		w.mu.Lock()
+		w.running = false
+		w.cancel = nil
+		w.done = nil
+		close(done)
+		w.mu.Unlock()
+	}()
+
+	dir := w.watchDir
+	if w.recursive {
+		dir = utils.Dir3Dot(dir)
+	}
+	eventCh := make(chan notify.EventInfo, 64)
+	if err := notify.Watch(dir, eventCh, w.events...); err != nil {
 		return err
 	}
-	defer notify.Stop(nw.eventInfo)
+	defer notify.Stop(eventCh)
 
 	for {
-		_, ok := <-nw.eventInfo // this should exit the loop when we close the channel by executing nw.Stop()
-		// if ok {
-		// log.Printf("got event: %v; executing handler...", ei) // FIXME: uncontrolled logging
-		// if err = nw.handler(&ei); err != nil {
-		// log.Printf("failed executing handler for event: %v; %s", ei, err.Error()) // FIXME: uncontrolled logging
-		// TODO: consider how to handle this error
-		// }
-		if !ok {
-			err = fmt.Errorf("watcher for %s terminated", nw.watchdir)
-			break
+		select {
+		case <-runCtx.Done():
+			return nil
+		case event := <-eventCh:
+			if w.handler == nil {
+				continue
+			}
+			if err := w.handler(&event); err != nil {
+				return fmt.Errorf("handle event for %s: %w", w.watchDir, err)
+			}
 		}
 	}
-	nw.watching = false
-	return err
 }
 
-func (nw *NotifyWatcher) Stop() error {
-	nw.watching = false
-	select {
-	case _, ok := <-nw.eventInfo:
-		if !ok {
-			return fmt.Errorf("channel nw.EventInfo already closed")
-		} else {
-			close(nw.eventInfo) // can we do this? we probably need to be careful in the watch loop?
-			return nil
-		}
-	default:
+// Stop is idempotent and waits for Watch to release its registration.
+func (w *NotifyWatcher) Stop() error {
+	w.mu.RLock()
+	cancel, done := w.cancel, w.done
+	w.mu.RUnlock()
+	if cancel == nil {
 		return nil
 	}
+	cancel()
+	<-done
+	return nil
 }
 
-func (nw *NotifyWatcher) IsWatching() bool {
-	return nw.watching
+func (w *NotifyWatcher) IsWatching() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.running
 }
