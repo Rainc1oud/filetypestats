@@ -43,6 +43,14 @@ func (m *DirMonitor) tryScanStart() bool {
 	return true
 }
 
+// markDirty records that the monitor's view of its tree is incomplete (events were dropped), so a
+// rescan is owed. Status() reports it until a scan finishes.
+func (m *DirMonitor) markDirty() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dirty = true
+}
+
 func (m *DirMonitor) scanFinish() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

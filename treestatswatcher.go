@@ -22,9 +22,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var defaultNotifyEvents = []notify.Event{notify.InCreate, notify.InModify, notify.InMovedFrom, notify.InMovedTo, notify.Remove}
+// InCloseWrite rather than InModify: a write of a large file emits InModify per chunk, and each one
+// costs a full re-read (to classify the content) and a database write -- the watcher floods itself,
+// and classifies half-written files on the way. InCloseWrite arrives once, when the writer is done.
+var defaultNotifyEvents = []notify.Event{notify.InCreate, notify.InCloseWrite, notify.InMovedFrom, notify.InMovedTo, notify.Remove}
 
 const pathInfoBatchSize = 200
+
+// rescanQuietPeriod is how long a tree must be quiet after an overflow before it is rescanned:
+// a burst that overruns the queue keeps overflowing for as long as it lasts, and rescanning it
+// while it is still running would only be repeated.
+const rescanQuietPeriod = 3 * time.Second
 
 type tMoveInfo struct {
 	From string
@@ -42,6 +50,7 @@ type TreeStatsWatcher struct {
 	watchCtx         context.Context
 	watchWG          sync.WaitGroup
 	watchErrors      []error
+	rescanTimers     map[string]*time.Timer
 }
 
 // NewTreeStatsWatcher is the top level constructor featuring:
@@ -53,9 +62,10 @@ type TreeStatsWatcher struct {
 // If dirs is empty, you can add watches later with AddWatch() or AddDir()
 func NewTreeStatsWatcher(dirs []string, dbconn *ftsdb.FileTypeStatsDB) (*TreeStatsWatcher, error) {
 	tsw := &TreeStatsWatcher{
-		DirMonitors: NewDirMonitors(),
-		moves:       make(tMoveMap),
-		ftsDB:       dbconn,
+		DirMonitors:  NewDirMonitors(),
+		moves:        make(tMoveMap),
+		ftsDB:        dbconn,
+		rescanTimers: make(map[string]*time.Timer),
 	}
 	tsw.eventHandler = tsw.onFileChanged // set default event handler
 	err := tsw.AddWatch(dirs...)
@@ -68,7 +78,10 @@ func NewTreeStatsWatcher(dirs []string, dbconn *ftsdb.FileTypeStatsDB) (*TreeSta
 func (tsw *TreeStatsWatcher) AddWatch(dirs ...string) error {
 	errs := ggu.NewErrors()
 	for _, d := range dirs {
-		tsw.AddDir(d, true, tsw.onFileChanged, defaultNotifyEvents...) // TBC: do we need to make this configurable on a higher level?
+		monitor := tsw.AddDir(d, true, tsw.onFileChanged, defaultNotifyEvents...) // TBC: do we need to make this configurable on a higher level?
+		if monitor != nil {
+			tsw.watchResync(d, monitor)
+		}
 		errs.AddIf(tsw.ScanDirAsync(d))
 		tsw.watchMu.Lock()
 		running := tsw.watchCtx != nil && tsw.watchCtx.Err() == nil
@@ -78,6 +91,39 @@ func (tsw *TreeStatsWatcher) AddWatch(dirs ...string) error {
 		}
 	}
 	return errs.Err()
+}
+
+// watchResync makes a burst repair itself: the monitor is marked dirty and the dir is rescanned
+// once the burst is over. Without this the watcher's view stays silently incomplete until the next
+// full scan, which may be a day away.
+func (tsw *TreeStatsWatcher) watchResync(dir string, monitor *DirMonitor) {
+	monitor.OnResync(func(string) {
+		monitor.markDirty()
+		tsw.scheduleRescan(dir)
+	})
+}
+
+// scheduleRescan (re)starts the quiet-period timer for dir. Every overflow pushes the scan further
+// out, so a long burst is followed by exactly one rescan.
+func (tsw *TreeStatsWatcher) scheduleRescan(dir string) {
+	tsw.watchMu.Lock()
+	defer tsw.watchMu.Unlock()
+	if timer, ok := tsw.rescanTimers[dir]; ok {
+		timer.Stop()
+	}
+	tsw.rescanTimers[dir] = time.AfterFunc(rescanQuietPeriod, func() {
+		tsw.watchMu.Lock()
+		ctx := tsw.watchCtx
+		delete(tsw.rescanTimers, dir)
+		tsw.watchMu.Unlock()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if err := ctx.Err(); err != nil { // watching stopped meanwhile; the next scan will do it
+			return
+		}
+		_ = tsw.ScanDirContext(ctx, dir)
+	})
 }
 
 // WatchAll runs all currently registered watchers until ctx is cancelled.
