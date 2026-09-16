@@ -1,3 +1,7 @@
+# with ONESHELL all lines of a recipe are executed in one shell; -e makes rules actually fail on error
+.ONESHELL:
+.SHELLFLAGS := -ec
+
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 BPFX := $(GOOS)-$(GOARCH)
@@ -21,6 +25,15 @@ BENCH_OPT_CHART_INPUTS ?= $(wildcard $(BENCH_OPT_OUT_DIR)/benchmark-*.csv)
 
 # keep builds pure Go; the sqlite dependency uses modernc.org/sqlite.
 GOENV := CGO_ENABLED=0 GO111MODULE="on"
+GOCMD := go
+export GOWORK=off# build against this go.mod, not an enclosing go.work (rc-integration)
+
+# golangci-lint: prefer whatever's already on PATH (e.g. the nix-pinned devenv one); if
+# missing, fall back to `go run`.
+GOLANGCI_LINT := $(shell command -v golangci-lint 2>/dev/null)
+ifeq ($(GOLANGCI_LINT),)
+  GOLANGCI_LINT := $(GOCMD) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+endif
 
 ### build container settings
 DOCKEREXE := $(shell command -v podman)
@@ -45,8 +58,17 @@ clean:
 	rm -rf build/
 
 .PHONY: test
-test:
-	$(GOENV) go test -v ./...
+test: ## run all go tests
+	$(GOENV) $(GOCMD) run gotest.tools/gotestsum@latest --format testdox -- ./...
+
+.PHONY: check
+check: ## static analysis (golangci-lint; its default set includes govet)
+	$(GOLANGCI_LINT) run ./...
+
+.PHONY: test-coverage
+test-coverage: ## test coverage report (cover.report.html)
+	$(GOENV) $(GOCMD) test -covermode count -coverprofile cover.report.out ./...
+	$(GOCMD) tool cover -html=cover.report.out -o cover.report.html
 
 # Deliberately separate from test and CI: the race detector requires CGO.
 .PHONY: test-race

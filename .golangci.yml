@@ -1,0 +1,59 @@
+# golangci-lint configuration (house standard).
+#
+# Purpose is to make the linter set EXPLICIT rather than to change what runs: the linters
+# below are golangci-lint's current defaults, pinned here so a version bump cannot silently
+# add or drop one. `make check` runs this; there is no separate `go vet` call because govet
+# is one of these linters (a duplicate invocation would only mask this output -- with
+# .ONESHELL + -ec the recipe aborts on the first failure).
+version: "2"
+
+linters:
+  # golangci-lint's default set, stated explicitly.
+  default: standard
+  enable:
+    - errcheck # unchecked error returns
+    - govet # the go vet passes -- see settings below
+    - ineffassign # assignments never used
+    - staticcheck # staticcheck rules (SA*), incl. deprecation warnings
+    - unused # unused constants, vars, funcs, types
+    # Not a default: keeps //nolint directives honest. Work-in-progress scaffolding is marked
+    # explicitly instead of turning `unused` into a warning (golangci-lint has no non-failing
+    # severity), e.g. above the declaration, or above `package` for a whole file:
+    #   //nolint:unused // WIP #342: sync scaffold, wired up in the next MR
+    # and it's reported again as soon as the directive no longer suppresses anything.
+    - nolintlint
+
+  settings:
+    nolintlint:
+      require-explanation: true # "// reason" after the directive
+      require-specific: true # name the linter(s); no bare //nolint
+    errcheck:
+      exclude-functions:
+        # gogenutils' error collector: AddIf stores the error and returns it only for chaining,
+        # so `errs.AddIf(err)` as a statement loses nothing.
+        - (*github.com/Rainc1oud/gogenutils.Errors).AddIf
+    govet:
+      # Everything go vet offers, minus the two that are noise for our code.
+      # Notably this INCLUDES copylocks, which catches copying a sync.Mutex -- e.g. ranging
+      # over or reflect.DeepEqual-ing a protobuf message, since protoimpl.MessageState
+      # embeds a mutex (rcupdater/taskmanager/mapper_test.go). Note `go test` runs only a
+      # reduced vet subset that omits copylocks, so `make test` does not cover this.
+      enable-all: true
+      disable:
+        # Micro-optimisation of struct field order. Reports "N leading bytes of pointer
+        # data but optimal value is M" (2 hits in satconsole alone) with no correctness
+        # value. Off.
+        - fieldalignment
+        # Flags `err :=` inside an if/for that shadows an outer `err`. That is idiomatic
+        # Go, and it is what nearly all of our hits are (10 of 10 extra findings in
+        # rcupdater were shadowed `err`/`task`). Off as noise, not as disagreement.
+        - shadow
+
+  exclusions:
+    presets:
+      # golangci-lint v1's default: unchecked Close/Flush, os.Remove(All), fmt.Print*, os.(Un)Setenv
+      # are not reported (idiomatic `defer f.Close()`, best-effort cleanup). v2 made it opt-in.
+      - std-error-handling
+
+# Test files are linted too -- several real defects here live only in _test.go
+# (copylocks in rcupdater, an undefined field in pdnsupdate's config_test.go).

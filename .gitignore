@@ -28,3 +28,11 @@ build/
 .direnv/
 *.sqlite
 *.sqlite-journal
+
+# devenv
+.devenv/
+devenv.local.nix
+devenv.local.yaml
+!devenv.nix
+!devenv.yaml
+!devenv.lock

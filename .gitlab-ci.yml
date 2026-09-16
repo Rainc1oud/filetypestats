@@ -23,7 +23,7 @@ include:
   - project: "r/deploy/iss"
     file: "semvertag.gitlab-ci.yml"
 
-test-unit:
+.go-job:
   stage: test
   variables:
     GOARCH: "amd64"
@@ -31,7 +31,17 @@ test-unit:
     GOCACHE: "${CI_PROJECT_DIR}/.gocache-${GOARCH}/go-build"
     GOPATH: "${CI_PROJECT_DIR}/.go-${GOARCH}"
     GOTOOLCHAIN: go1.25.6+auto
+
+test-check:
+  extends: .go-job
   script: |
     source /etc/environment
-    go test -v ./...
-    go test -covermode count ./... -coverprofile cover.report.out
+    make check
+  allow_failure: true # TEMPORARY: 15 pre-existing findings (9 errcheck, 4 staticcheck, 1 ineffassign, 1 unused); drop the flag once they are cleared
+
+test-unit:
+  extends: .go-job
+  script: |
+    source /etc/environment
+    make test
+    make test-coverage
