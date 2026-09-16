@@ -15,7 +15,7 @@ import (
 
 func getFTStat(path string) (*types.FTypeStat, error) {
 	var (
-		err error = nil
+		err error
 		fi  fs.FileInfo
 	)
 

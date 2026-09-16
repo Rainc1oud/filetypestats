@@ -61,7 +61,9 @@ func main() {
 
 	fmt.Println("Starting to watch, press ctrl+c to exit...")
 	fmt.Printf("Manipulate the contents of %v to test inotify\n", tsw.Dirs())
-	tsw.WatchAll(context.Background())
+	if err := tsw.WatchAll(context.Background()); err != nil {
+		exitErr(err)
+	}
 	fmt.Println("All watchers finished")
 }
 

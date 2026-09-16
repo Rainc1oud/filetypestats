@@ -143,8 +143,8 @@ func (m *DirMonitors) AddDir(dir string, recursive bool, handler notifywatch.Eve
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	unwanted := m.overlappedDirsLocked(dir)
-	if slices.Contains(unwanted, dir) {
-		unwanted = ggu.RemoveFromStringSlice(dir, unwanted)
+	if i := slices.Index(unwanted, dir); i >= 0 {
+		unwanted = slices.Delete(unwanted, i, i+1)
 	}
 	for _, unwantedDir := range unwanted {
 		if monitor := m.monitors[unwantedDir]; monitor != nil && monitor.IsWatching() {

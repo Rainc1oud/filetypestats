@@ -48,11 +48,13 @@ func (f *FileTypeStatsDB) upsertFileStatsMulti(batchBuffer *types.FTypeStatsBatc
 	for _, pi := range pathsInfo {
 		catid, ok := f.catIDs[pi.FType]
 		if !ok {
-			tx.Rollback()
+			// the rollback error is of no use here: the batch is lost either way, and the
+			// caller needs to see why rather than how the cleanup went
+			_ = tx.Rollback()
 			return fmt.Errorf("unknown file category %q", pi.FType)
 		}
 		if _, err := stmt.Exec(pi.Path, pi.NumBytes, catid, updated); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return err
 		}
 	}

@@ -37,7 +37,6 @@ test-check:
   script: |
     source /etc/environment
     make check
-  allow_failure: true # TEMPORARY: 15 pre-existing findings (9 errcheck, 4 staticcheck, 1 ineffassign, 1 unused); drop the flag once they are cleared
 
 test-unit:
   extends: .go-job

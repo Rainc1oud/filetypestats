@@ -350,7 +350,7 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 		if err := rs.Scan(&fcatN, &pathN, &fcatcountN, &fcatsizeN); err != nil {
 			return ftstats, err
 		}
-		if !(pathN.Valid && fcatN.Valid && fcatcountN.Valid && fcatsizeN.Valid) { // we had NULL values, just return empty result without error
+		if !pathN.Valid || !fcatN.Valid || !fcatcountN.Valid || !fcatsizeN.Valid { // we had NULL values, just return empty result without error
 			return ftstats, nil
 		}
 		path = pathN.String
@@ -430,28 +430,6 @@ func (f *FileTypeStatsDB) DeleteFileStats(path string) error {
 
 func (f *FileTypeStatsDB) DbFileName() string {
 	return f.fileName
-}
-
-// returns table.id where field==value, inserts value if not exist (id must be AUTOINCREMENT)
-func (f *FileTypeStatsDB) selsertIdText(table, field, value string) (int, error) {
-	value = strings.ReplaceAll(value, "'", "''") // escape single quotes for SQL
-	var id int
-	rs, err := f.DB.Query(fmt.Sprintf("SELECT id FROM %s WHERE %s='%s'", table, field, value))
-	if err != nil {
-		return -1, err
-	}
-	defer rs.Close() // important, otherwise later we get "locked" errors
-	if rs.Next() {
-		if err := rs.Scan(&id); err != nil {
-			return -1, err
-		}
-		return id, nil
-	}
-	r := f.DB.QueryRow(fmt.Sprintf("INSERT INTO %s(%s) VALUES('%s') RETURNING id", table, field, value))
-	if err := r.Scan(&id); err != nil {
-		return -1, err
-	}
-	return id, nil
 }
 
 // pathsWherePredicate returns the WHERE clause part selecting the paths according to input dir list

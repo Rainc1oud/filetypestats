@@ -80,7 +80,5 @@ func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 		return err
 	}
 
-	fdb.CommitBatch(piBuf) // commit any "in-flight" batch
-
-	return nil
+	return fdb.CommitBatch(piBuf) // commit any "in-flight" batch
 }

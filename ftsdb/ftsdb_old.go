@@ -40,7 +40,7 @@ func (f *FileTypeStatsDB) FTStatsSum_(paths []string) (types.FileTypeStats, erro
 		if err := rs.Scan(&fcatN, &pathN, &fcatcountN, &fcatsizeN); err != nil {
 			return ftstats, err
 		}
-		if !(pathN.Valid && fcatN.Valid && fcatcountN.Valid && fcatsizeN.Valid) { // we had NULL values, just return empty result without error
+		if !pathN.Valid || !fcatN.Valid || !fcatcountN.Valid || !fcatsizeN.Valid { // we had NULL values, just return empty result without error
 			return ftstats, nil
 		}
 		path = pathN.String

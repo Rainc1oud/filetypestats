@@ -70,8 +70,8 @@ func TestFileTypeStatsDB_FTStatsSum(t *testing.T) {
 	defer os.RemoveAll(path.Dir(fdb.DbFileName()))
 
 	var (
-		totalFileSize uint64 = 0
-		totalFiles    int    = 2789
+		totalFileSize uint64
+		totalFiles    = 2789
 	)
 
 	allFiles := make(types.FileTypeStats)
@@ -85,7 +85,9 @@ func TestFileTypeStatsDB_FTStatsSum(t *testing.T) {
 		fsize := uint64(rng.Int64N(9000000))
 		fpath := fmt.Sprintf("/somedir/file%04d.tmp", n)
 		fcat := fclasses[rng.IntN(len(fclasses))]
-		fdb.UpdateFileStats(fpath, fcat, fsize)
+		if err := fdb.UpdateFileStats(fpath, fcat, fsize); err != nil {
+			t.Fatal(err)
+		}
 		allFiles[fpath] = &types.FTypeStat{Path: fpath, FType: fcat, NumBytes: fsize, FileCount: 1}
 		totalFileSize += fsize
 		if rng.IntN(9) > 1 { // add to a selection based on random

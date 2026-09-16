@@ -226,13 +226,14 @@ func (tsw *TreeStatsWatcher) ScanDirContext(ctx context.Context, dir string) err
 
 			if de.IsDir() {
 				ftype = "dir"
-				tsw.ftsDB.UpdateFileStatsMulti(osPathname+"/", ftype, 0, batchBuffer) // add / to make filtering more consistent in SELECT queries
+				err = tsw.ftsDB.UpdateFileStatsMulti(osPathname+"/", ftype, 0, batchBuffer) // add / to make filtering more consistent in SELECT queries
 			} else if de.IsRegular() {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()), batchBuffer)
-						return nil
+						if err = tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()), batchBuffer); err == nil {
+							return nil
+						}
 					}
 				}
 			}
@@ -255,8 +256,8 @@ func (tsw *TreeStatsWatcher) ScanDirContext(ctx context.Context, dir string) err
 	if err != nil {
 		return err
 	}
-	tsw.ftsDB.DeleteOlderThanWithPrefix(tsw.ScanStarted(dir), dir)
-	return nil
+	// whatever this scan did not touch is no longer on the filesystem
+	return tsw.ftsDB.DeleteOlderThanWithPrefix(tsw.ScanStarted(dir), dir)
 }
 
 // onFileChanged is the inotify event handler passed to the notify watcher
