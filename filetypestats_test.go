@@ -44,7 +44,7 @@ func writeTestTree(t *testing.T) string {
 	return root
 }
 
-func assertStat(t *testing.T, gotCount uint, gotSize uint64, wantCount uint, wantSize uint64) {
+func assertStat(t *testing.T, gotCount uint, gotSize int64, wantCount uint, wantSize int64) {
 	t.Helper()
 	if gotCount != wantCount || gotSize != wantSize {
 		t.Fatalf("got count=%d size=%d, want count=%d size=%d", gotCount, gotSize, wantCount, wantSize)
@@ -70,15 +70,15 @@ func TestWalkFileTypeStatsDBScansFilesAndQueriesDB(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertStat(t, stats["image"].FileCount, stats["image"].NumBytes, 2, uint64(len(testPNG)*2))
-	assertStat(t, stats["application"].FileCount, stats["application"].NumBytes, 2, uint64(len(testPDF)*2))
+	assertStat(t, stats["image"].FileCount, stats["image"].NumBytes, 2, int64(len(testPNG)*2))
+	assertStat(t, stats["application"].FileCount, stats["application"].NumBytes, 2, int64(len(testPDF)*2))
 	assertStat(t, stats["dir"].FileCount, stats["dir"].NumBytes, 2, 0)
 
 	dump, err := fdb.FTDumpPaths([]string{filepath.Join(root, "image.png")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(*dump) != 1 || (*dump)[0].FType != "image" || (*dump)[0].NumBytes != uint64(len(testPNG)) {
+	if len(*dump) != 1 || (*dump)[0].FType != "image" || (*dump)[0].NumBytes != int64(len(testPNG)) {
 		t.Fatalf("unexpected dump result: %#v", *dump)
 	}
 }
@@ -107,13 +107,13 @@ func TestTreeStatsWatcherScanDirAndQueryWrappers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertStat(t, statsFromDB["image"].FileCount, statsFromDB["image"].NumBytes, 2, uint64(len(testPNG)*2))
-	assertStat(t, statsFromDB["application"].FileCount, statsFromDB["application"].NumBytes, 2, uint64(len(testPDF)*2))
+	assertStat(t, statsFromDB["image"].FileCount, statsFromDB["image"].NumBytes, 2, int64(len(testPNG)*2))
+	assertStat(t, statsFromDB["application"].FileCount, statsFromDB["application"].NumBytes, 2, int64(len(testPDF)*2))
 
 	statsFromFile, err := treestatsquery.FTStatsSum(dbfile, []string{filepath.Join(root, "nested") + string(os.PathSeparator)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertStat(t, statsFromFile["image"].FileCount, statsFromFile["image"].NumBytes, 1, uint64(len(testPNG)))
-	assertStat(t, statsFromFile["application"].FileCount, statsFromFile["application"].NumBytes, 1, uint64(len(testPDF)))
+	assertStat(t, statsFromFile["image"].FileCount, statsFromFile["image"].NumBytes, 1, int64(len(testPNG)))
+	assertStat(t, statsFromFile["application"].FileCount, statsFromFile["application"].NumBytes, 1, int64(len(testPDF)))
 }

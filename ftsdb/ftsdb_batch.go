@@ -7,7 +7,7 @@ import (
 	"github.com/Rainc1oud/filetypestats/types"
 )
 
-func (f *FileTypeStatsDB) UpdateFileStatsMulti(path, filecat string, size uint64, batchBuffer *types.FTypeStatsBatch) error {
+func (f *FileTypeStatsDB) UpdateFileStatsMulti(path, filecat string, size int64, batchBuffer *types.FTypeStatsBatch) error {
 	var err error
 	if !batchBuffer.Push(types.FTypeStat{Path: path, FType: filecat, NumBytes: size}) { // push returns false if this push filled the buffer to capacity
 		err = f.CommitBatch(batchBuffer) // commit resets lastElem and empties the batch buffer

@@ -50,7 +50,7 @@ func seedBenchRows(b *testing.B, fdb *FileTypeStatsDB, root string, rows int) {
 	classes := []string{"image", "application", "audio", "video", "document", "archive", "other"}
 	for i := 0; i < rows; i++ {
 		filecat := classes[i%len(classes)]
-		if err := fdb.UpdateFileStatsMulti(fmt.Sprintf("%s/file-%06d.dat", root, i), filecat, uint64(100+i), batch); err != nil {
+		if err := fdb.UpdateFileStatsMulti(fmt.Sprintf("%s/file-%06d.dat", root, i), filecat, int64(100+i), batch); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -66,7 +66,7 @@ func BenchmarkUpdateFileStatsUpsert(b *testing.B) {
 	b.ResetTimer()
 	start := time.Now()
 	for i := 0; i < b.N; i++ {
-		if err := fdb.UpdateFileStats(fmt.Sprintf("/bench/upsert/file-%06d.dat", i), "image", uint64(i)); err != nil {
+		if err := fdb.UpdateFileStats(fmt.Sprintf("/bench/upsert/file-%06d.dat", i), "image", int64(i)); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -84,7 +84,7 @@ func BenchmarkUpdateFileStatsMultiCommitBatch(b *testing.B) {
 	b.ResetTimer()
 	start := time.Now()
 	for i := 0; i < b.N; i++ {
-		if err := fdb.UpdateFileStatsMulti(fmt.Sprintf("/bench/batch/file-%06d.dat", i), "application", uint64(i), batch); err != nil {
+		if err := fdb.UpdateFileStatsMulti(fmt.Sprintf("/bench/batch/file-%06d.dat", i), "application", int64(i), batch); err != nil {
 			b.Fatal(err)
 		}
 	}

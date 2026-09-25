@@ -13,7 +13,6 @@ import (
 	"github.com/Rainc1oud/filetypestats/ftsdb"
 	"github.com/Rainc1oud/filetypestats/treestatsquery"
 	"github.com/Rainc1oud/filetypestats/types"
-	utils "github.com/Rainc1oud/gogenutils"
 )
 
 var (
@@ -149,14 +148,14 @@ func watch(dirs []string, file string) {
 func printstats(ftstats types.FileTypeStats) {
 	fmt.Printf("%10s: \t%30s %8s \t%5s\n%75s\n", "Type", "Path", "Size", "Count", strings.Repeat("-", 75))
 	for _, catstat := range ftstats {
-		fmt.Printf("%10s: \t%30s (%8s) \t%5d files\n", catstat.FType, catstat.Path, utils.ByteCountSI(catstat.NumBytes), catstat.FileCount)
+		fmt.Printf("%10s: \t%30s (%8s) \t%5d files\n", catstat.FType, catstat.Path, types.ByteCountSI(catstat.NumBytes), catstat.FileCount)
 	}
 }
 
 func printflist(flist *[]types.FTypeStat) {
 	fmt.Printf("%60s\t%10s\t%10s\t%80s\n", "Path", "Type", "Size", strings.Repeat("-", 75))
 	for _, pathinfo := range *flist {
-		fmt.Printf("%60s\t%10s\t%10s\n", pathinfo.Path, pathinfo.FType, utils.ByteCountSI(pathinfo.NumBytes))
+		fmt.Printf("%60s\t%10s\t%10s\n", pathinfo.Path, pathinfo.FType, types.ByteCountSI(pathinfo.NumBytes))
 	}
 }
 

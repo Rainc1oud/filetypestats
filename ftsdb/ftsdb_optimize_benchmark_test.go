@@ -24,7 +24,7 @@ func BenchmarkOptimizeSingleRowUpsert(b *testing.B) {
 	b.ResetTimer()
 	start := time.Now()
 	for i := 0; i < b.N; i++ {
-		if err := fdb.UpdateFileStats(fmt.Sprintf("/bench/optimize/single/file-%06d.dat", i), "image", uint64(i)); err != nil {
+		if err := fdb.UpdateFileStats(fmt.Sprintf("/bench/optimize/single/file-%06d.dat", i), "image", int64(i)); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -47,7 +47,7 @@ func BenchmarkOptimizeBatchCommit200(b *testing.B) {
 	b.ResetTimer()
 	start := time.Now()
 	for i := 0; i < b.N; i++ {
-		if err := fdb.UpdateFileStatsMulti(fmt.Sprintf("/bench/optimize/batch200/file-%06d.dat", i), "application", uint64(i), batch); err != nil {
+		if err := fdb.UpdateFileStatsMulti(fmt.Sprintf("/bench/optimize/batch200/file-%06d.dat", i), "application", int64(i), batch); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -112,7 +112,7 @@ func BenchmarkOptimizeConcurrentBatchAndSingleWriters(b *testing.B) {
 			defer wg.Done()
 			batch := types.NewFTypeStatsBatch(prodBatchSize)
 			for i := 0; i < concurrentBurstRows; i++ {
-				if err := fdb.UpdateFileStatsMulti(fmt.Sprintf("/bench/optimize/concurrent/scan/%d/file-%06d.dat", iter, i), "application", uint64(i), batch); err != nil {
+				if err := fdb.UpdateFileStatsMulti(fmt.Sprintf("/bench/optimize/concurrent/scan/%d/file-%06d.dat", iter, i), "application", int64(i), batch); err != nil {
 					errs <- err
 					return
 				}
@@ -125,7 +125,7 @@ func BenchmarkOptimizeConcurrentBatchAndSingleWriters(b *testing.B) {
 		go func(iter int) {
 			defer wg.Done()
 			for i := 0; i < concurrentBurstRows; i++ {
-				if err := fdb.UpdateFileStats(fmt.Sprintf("/bench/optimize/concurrent/watch/%d/file-%06d.dat", iter, i), "image", uint64(i)); err != nil {
+				if err := fdb.UpdateFileStats(fmt.Sprintf("/bench/optimize/concurrent/watch/%d/file-%06d.dat", iter, i), "image", int64(i)); err != nil {
 					errs <- err
 					return
 				}

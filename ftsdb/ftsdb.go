@@ -291,7 +291,7 @@ func (f *FileTypeStatsDB) FTDumpPaths(paths []string) (*[]types.FTypeStat, error
 	var (
 		path     string
 		filecat  string
-		filesize uint64
+		filesize int64
 	)
 
 	for rs.Next() {
@@ -339,7 +339,7 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 		path       string
 		fcat       string
 		fcatcount  uint
-		fcatsize   uint64
+		fcatsize   int64
 		pathN      sql.NullString
 		fcatN      sql.NullString
 		fcatcountN sql.NullInt32
@@ -356,7 +356,7 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 		path = pathN.String
 		fcat = fcatN.String
 		fcatcount = uint(fcatcountN.Int32) // crappy that we don't have sql.NullUInt => will this be a problem???
-		fcatsize = uint64(fcatsizeN.Int64)
+		fcatsize = fcatsizeN.Int64
 		if len(paths) == 1 { // the query has specified a single directory pattern, so we use it for the path
 			if fcatcount == 1 && fcat != "total" { // there's only one, so we can take the exact path, except for totals take the input path
 				ftstats[fcat] = &types.FTypeStat{Path: path, FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
@@ -371,7 +371,7 @@ func (f *FileTypeStatsDB) FTStatsSum(paths []string) (types.FileTypeStats, error
 }
 
 // UpdateFileStats upserts the file in path with size
-func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size uint64) error {
+func (f *FileTypeStatsDB) UpdateFileStats(path, filecat string, size int64) error {
 	catid, ok := f.catIDs[filecat]
 	if !ok {
 		return fmt.Errorf("unknown file category %q", filecat)

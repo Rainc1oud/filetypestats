@@ -61,7 +61,7 @@ func fileTypeStatsDB(scanRoot string, fdb *ftsdb.FileTypeStatsDB) error {
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						return fdb.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()), piBuf)
+						return fdb.UpdateFileStatsMulti(osPathname, ftype, fi.Size(), piBuf)
 					}
 				}
 			}

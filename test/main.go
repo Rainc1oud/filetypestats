@@ -11,6 +11,7 @@ import (
 	"github.com/Rainc1oud/filetypestats"
 	"github.com/Rainc1oud/filetypestats/ftsdb"
 	"github.com/Rainc1oud/filetypestats/treestatsquery"
+	"github.com/Rainc1oud/filetypestats/types"
 	"github.com/Rainc1oud/filetypestats/utils"
 	"github.com/Rainc1oud/gogenutils"
 )
@@ -127,7 +128,7 @@ func checkFTStats(files []string, ftype string) error {
 	// find some files and check their data against specific query data
 	if len(files) > 0 {
 		ts, tc := getFileSizeCount(files)
-		fmt.Printf("\nFound the following %s files: %v\ntotal size: %6s\ttotal count: %5d\n", ftype, files, gogenutils.ByteCountSI(ts), tc)
+		fmt.Printf("\nFound the following %s files: %v\ntotal size: %6s\ttotal count: %5d\n", ftype, files, types.ByteCountSI(ts), tc)
 		qd := utils.StringSliceApply(tsw.Dirs(), utils.DirTrailSep)
 		stats, err := treestatsquery.FTStatsSum(dbfile, qd) // now we basically expect that the images fount in the top-level dir correspond to those in the query result
 		if err != nil {
@@ -135,7 +136,7 @@ func checkFTStats(files []string, ftype string) error {
 			return err
 		}
 		if fst, ok := stats[ftype]; ok {
-			fmt.Printf("\nQuery result for %s files: \ntotal size: %6s\ttotal count: %5d\n", ftype, gogenutils.ByteCountSI(fst.NumBytes), fst.FileCount)
+			fmt.Printf("\nQuery result for %s files: \ntotal size: %6s\ttotal count: %5d\n", ftype, types.ByteCountSI(fst.NumBytes), fst.FileCount)
 		}
 	}
 	return nil
@@ -151,13 +152,13 @@ func getRelGlob(dir, pat string) []string {
 
 }
 
-func getFileSizeCount(files []string) (uint64, uint) {
-	var size uint64 = 0
+func getFileSizeCount(files []string) (int64, uint) {
+	var size int64 = 0
 	var count uint = 0
 	for _, f := range files {
 		if fi, err := os.Lstat(f); err == nil {
 			if !fi.IsDir() {
-				size += uint64(fi.Size())
+				size += fi.Size()
 				count += 1
 			}
 		}
