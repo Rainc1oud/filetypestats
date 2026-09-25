@@ -231,7 +231,7 @@ func (tsw *TreeStatsWatcher) ScanDirContext(ctx context.Context, dir string) err
 				fi, err = os.Stat(osPathname)
 				if err == nil {
 					if ftype, err = filetype.FileClass(osPathname); err == nil {
-						if err = tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, uint64(fi.Size()), batchBuffer); err == nil {
+						if err = tsw.ftsDB.UpdateFileStatsMulti(osPathname, ftype, fi.Size(), batchBuffer); err == nil {
 							return nil
 						}
 					}

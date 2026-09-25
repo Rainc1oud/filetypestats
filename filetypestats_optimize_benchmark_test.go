@@ -48,7 +48,7 @@ func BenchmarkOptimizeConcurrentScanAndLiveUpdates(b *testing.B) {
 			defer wg.Done()
 			// simulates a burst of live inotify events landing mid-scan
 			for j := 0; j < 500; j++ {
-				if err := fdb.UpdateFileStats(fmt.Sprintf("/bench/optimize/live-event/file-%06d.dat", j), "image", uint64(j)); err != nil {
+				if err := fdb.UpdateFileStats(fmt.Sprintf("/bench/optimize/live-event/file-%06d.dat", j), "image", int64(j)); err != nil {
 					errs <- err
 					return
 				}

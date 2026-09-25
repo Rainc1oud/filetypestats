@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-
-	"github.com/Rainc1oud/gogenutils"
 )
 
 var (
@@ -25,7 +23,7 @@ var (
 type FTypeStat struct {
 	Path      string
 	FType     string
-	NumBytes  uint64
+	NumBytes  int64
 	FileCount uint
 }
 
@@ -37,10 +35,28 @@ func (f *FileTypeStats) ToString() string {
 	var b strings.Builder
 	for _, k := range FTypeNames() {
 		if st, ok := (*f)[k]; ok {
-			fmt.Fprintf(&b, "\t%s.sum{size: %8s, count: %5d, path: %-16s}\n", k, gogenutils.ByteCountSI(st.NumBytes), st.FileCount, st.Path)
+			fmt.Fprintf(&b, "\t%s.sum{size: %8s, count: %5d, path: %-16s}\n", k, ByteCountSI(st.NumBytes), st.FileCount, st.Path)
 		}
 	}
 	return b.String()
+}
+
+// ByteCountSI renders a byte count in SI units, e.g. "1.2 MB". Sizes are int64 like
+// os.FileInfo.Size() and SQLite's INTEGER, so a negative delta renders with its sign.
+func ByteCountSI(b int64) string {
+	const unit = 1000
+	if b < 0 {
+		return "-" + ByteCountSI(-b)
+	}
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
 }
 
 // FTypeStatsBatch is a "stack like" buffer with a pointer to the next free slot

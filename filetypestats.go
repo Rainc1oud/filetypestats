@@ -35,7 +35,7 @@ func getFTStat(path string) (*types.FTypeStat, error) {
 
 	if fts.FType, err = filetype.FileClass(path); err == nil {
 		fts.Path = path
-		fts.NumBytes = uint64(fi.Size())
+		fts.NumBytes = fi.Size()
 		fts.FileCount = 1 // unnecessary, we may need to optimise the handling
 		return fts, nil
 	}

@@ -29,7 +29,7 @@ func (f *FileTypeStatsDB) FTStatsSum_(paths []string) (types.FileTypeStats, erro
 		path       string
 		fcat       string
 		fcatcount  uint
-		fcatsize   uint64
+		fcatsize   int64
 		pathN      sql.NullString
 		fcatN      sql.NullString
 		fcatcountN sql.NullInt32
@@ -46,7 +46,7 @@ func (f *FileTypeStatsDB) FTStatsSum_(paths []string) (types.FileTypeStats, erro
 		path = pathN.String
 		fcat = fcatN.String
 		fcatcount = uint(fcatcountN.Int32) // crappy that we don't have sql.NullUInt => will this be a problem???
-		fcatsize = uint64(fcatsizeN.Int64)
+		fcatsize = fcatsizeN.Int64
 		if len(paths) == 1 { // the query has specified a single directory pattern, so we use it for the path
 			if fcatcount == 1 && fcat != "total" { // there's only one, so we can take the exact path, except for totals take the input path
 				ftstats[fcat] = &types.FTypeStat{Path: path, FType: fcat, FileCount: fcatcount, NumBytes: fcatsize}
