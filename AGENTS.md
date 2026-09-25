@@ -30,9 +30,8 @@ make testcli
 
 Notes:
 
-- `CGO_ENABLED=0` is the expected build mode.
-- `make testcli` builds `build/linux-amd64/testcli` by default.
-- Cross-architecture `make testcli` targets use Podman and an internal container image; do not assume they work outside the author's environment.
+- Pure Go (the SQLite driver is `modernc.org/sqlite`), so no C toolchain is needed; only `make test-race` needs one.
+- `make testcli` builds `build/testcli`. Cross-compiling is plain Go, e.g. `GOOS=linux GOARCH=arm64 go build -o build/testcli ./internal/cmd/testcli`.
 - Tests create temporary SQLite files/directories under package directories and should clean them up. Investigate leftover `.tmp-*` or `*.sqlite` files before deleting them.
 - `notifywatch` tests depend on platform filesystem notification behavior and contain sleeps. They are more integration/observation oriented than deterministic unit tests.
 
@@ -51,9 +50,9 @@ Notes:
 After building `make testcli`, example usage:
 
 ```sh
-build/linux-amd64/testcli --dirs=/path/to/tree --db=scandb.sqlite --rm scan
-build/linux-amd64/testcli --dirs='/path/to/tree/*' --db=scandb.sqlite summary
-build/linux-amd64/testcli --dirs=/path/to/tree --db=scandb.sqlite watch
+build/testcli --dirs=/path/to/tree --db=scandb.sqlite --rm scan
+build/testcli --dirs='/path/to/tree/*' --db=scandb.sqlite summary
+build/testcli --dirs=/path/to/tree --db=scandb.sqlite watch
 ```
 
 The CLI can create or mutate SQLite databases in the working directory. Avoid committing generated databases or scan output.
